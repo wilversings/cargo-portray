@@ -1,0 +1,353 @@
+:root {
+  --bg: #f4f5f7;
+  --panel: #ffffff;
+  --line: #d6dae0;
+  --ink: #1f2933;
+  --muted: #67727e;
+  --accent: #d1345b;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 13px;
+  color: var(--ink);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  height: 100vh;
+  overflow: hidden;
+}
+
+#app {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  height: 100vh;
+}
+
+/* ---------------------------------------------------------------- sidebar */
+
+#sidebar {
+  background: var(--panel);
+  border-right: 1px solid var(--line);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+#crate-name {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 10px 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+}
+
+.panel {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.panel h2 {
+  margin: 0 0 8px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.panel h3 {
+  margin: 12px 0 6px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.panel p {
+  margin: 4px 0;
+}
+
+.hint {
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.hint.error {
+  color: var(--accent);
+}
+
+.mono,
+.signature,
+.module-name,
+.hidden-id,
+.neighbour-id {
+  font-family: ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace;
+}
+
+.strong {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.signature {
+  margin: 6px 0;
+  padding: 6px 8px;
+  background: #f7f8fa;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+label.check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+  cursor: pointer;
+}
+
+label.check span:last-child {
+  flex: 1;
+}
+
+.swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex: none;
+}
+
+label.field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+label.field > span {
+  flex: none;
+  color: var(--muted);
+  min-width: 92px;
+}
+
+label.field input[type="text"],
+label.field select,
+label.field input[type="range"] {
+  flex: 1;
+  min-width: 0;
+}
+
+input[type="text"],
+input[type="search"],
+select {
+  padding: 4px 6px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #fff;
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #fff;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #eef1f6;
+}
+
+.row-actions {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
+
+/* ----------------------------------------------------------- module tree */
+
+.module-tree {
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.module-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 0;
+}
+
+.module-row.solo {
+  background: #fff4e5;
+  border-radius: 3px;
+}
+
+.module-row.off .module-name {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+.module-row .indent {
+  flex: none;
+}
+
+.module-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.module-count {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.module-row button {
+  padding: 0 4px;
+  line-height: 18px;
+}
+
+/* ------------------------------------------------------------ hidden list */
+
+.hidden-row,
+.neighbour {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 1px 0;
+}
+
+.hidden-id,
+.neighbour-id {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+}
+
+.neighbour-rel {
+  flex: none;
+  color: var(--muted);
+  font-size: 10px;
+  min-width: 88px;
+}
+
+/* ----------------------------------------------------------------- canvas */
+
+#canvas {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  min-width: 0;
+  height: 100vh;
+}
+
+#toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+}
+
+#toolbar input[type="search"] {
+  width: 280px;
+}
+
+#toolbar .spacer {
+  flex: 1;
+}
+
+#viewport {
+  overflow: hidden;
+  background: #fff;
+  min-height: 0;
+  /* The diagram is dragged, not read as prose: without this, panning across
+     it selects every label it crosses. */
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+#viewport svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+#status {
+  padding: 6px 12px;
+  background: var(--panel);
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+g.node.selected text {
+  font-weight: 700;
+}
+
+/* ------------------------------------------------------- appearance panel */
+
+details.panel > summary {
+  margin: 0;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  cursor: pointer;
+  list-style: revert;
+}
+
+details.panel[open] > summary {
+  margin-bottom: 8px;
+}
+
+.look-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+}
+
+.look-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+input.color {
+  flex: none;
+  width: 26px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: none;
+  cursor: pointer;
+}
+
+.look-row select {
+  flex: none;
+  max-width: 108px;
+}
+
+#viewport svg {
+  cursor: grab;
+}

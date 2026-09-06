@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>portray</title>
+    <!-- Where the page gets its model. `cargo portray export` rewrites this to
+         graph.json, which is the whole of what makes the viewer static. -->
+    <meta name="portray-source" content="api/graph" />
+    <link rel="icon" href="favicon.svg" />
+    <link rel="stylesheet" href="src/style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <aside id="sidebar">
+        <header id="crate-name">loading…</header>
+        <div id="panels"></div>
+      </aside>
+      <main id="canvas">
+        <div id="toolbar"></div>
+        <div id="viewport"></div>
+        <div id="status"></div>
+      </main>
+    </div>
+    <!-- Plain ES modules, served straight off disk: no bundler, no npm. -->
+    <script type="module" src="src/main.js"></script>
+  </body>
+</html>
