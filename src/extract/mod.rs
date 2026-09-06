@@ -4,7 +4,7 @@ pub mod calls;
 pub mod types;
 pub mod visitor;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -15,8 +15,124 @@ use crate::model::{Graph, NodeKind};
 use crate::resolve::{collect_use_maps, Index, Resolver, UseMap};
 use visitor::{is_test_mod, Collector};
 
+/// Which modules a run reads at all.
+///
+/// This is not a filter. Every filter in this tool lives in the viewer, where
+/// changing one is a click; a scope is the opposite thing — it says which
+/// source files are opened, so a crate too big to parse, ship as JSON and lay
+/// out in a browser can be read a module at a time. Within a scope the tool
+/// behaves as though the rest of the crate were another crate entirely: names
+/// defined outside it do not resolve, exactly as a `serde` type does not, and
+/// so no edge points at them.
+#[derive(Debug, Default, Clone)]
+pub struct Scope {
+    /// Module paths, split into segments. Empty means the whole crate.
+    entries: Vec<Vec<String>>,
+}
+
+impl Scope {
+    /// Accepts either spelling of a module path — `actions::power` as Rust
+    /// writes it, or `actions/power` as the shell completes it.
+    pub fn new(paths: &[String]) -> Result<Self> {
+        let mut entries = Vec::new();
+        for path in paths {
+            let mut segments: Vec<String> = path
+                .replace('/', "::")
+                .split("::")
+                .filter(|segment| !segment.is_empty())
+                .map(str::to_string)
+                .collect();
+            // `crate::actions` and `actions` name the same module; anywhere
+            // else `crate` is an ordinary segment and stays.
+            if segments.first().is_some_and(|first| first == "crate") {
+                segments.remove(0);
+            }
+            anyhow::ensure!(
+                !segments.is_empty(),
+                "`{path}` does not name a module; write it as `actions` or `actions::power`"
+            );
+            entries.push(segments);
+        }
+        Ok(Scope { entries })
+    }
+
+    pub fn is_everything(&self) -> bool {
+        self.entries.is_empty()
+    }
+
+    /// True when items written in `module` are inside the scope.
+    fn contains(&self, module: &[String]) -> bool {
+        self.entries.is_empty()
+            || self
+                .entries
+                .iter()
+                .any(|entry| module.starts_with(entry.as_slice()))
+    }
+
+    /// True when `module` is in scope *or* an ancestor of something in it —
+    /// which is the question a file and a `mod` block ask, since `src/lib.rs`
+    /// is where `mod actions` is written and an inline `mod` is where the
+    /// scoped items live.
+    fn may_contain(&self, module: &[String]) -> bool {
+        self.contains(module) || self.entries.iter().any(|entry| entry.starts_with(module))
+    }
+
+    /// Fails when a scope entry names no module, with the siblings it could
+    /// have meant. `seen` is every module actually walked; `declared` is every
+    /// module the file layout has, which is where the suggestion comes from
+    /// because `seen` has been narrowed by this very scope.
+    fn check_matched(&self, seen: &BTreeSet<String>, declared: &BTreeSet<String>) -> Result<()> {
+        for entry in &self.entries {
+            let wanted = entry.join("::");
+            let matched = seen
+                .iter()
+                .any(|module| module == &wanted || module.starts_with(&format!("{wanted}::")));
+            if matched {
+                continue;
+            }
+            let parent = match wanted.rfind("::") {
+                Some(idx) => &wanted[..idx],
+                None => "",
+            };
+            let mut siblings: Vec<&str> = declared
+                .iter()
+                .filter(|module| {
+                    let module_parent = match module.rfind("::") {
+                        Some(idx) => &module[..idx],
+                        None => "",
+                    };
+                    module_parent == parent
+                })
+                .map(String::as_str)
+                .collect();
+            if siblings.is_empty() {
+                siblings = declared.iter().map(String::as_str).collect();
+            }
+            anyhow::bail!(
+                "no module `{wanted}` in this crate{}",
+                if siblings.is_empty() {
+                    String::new()
+                } else {
+                    format!(" — try one of: {}", siblings.join(", "))
+                }
+            );
+        }
+        Ok(())
+    }
+
+    /// The scope in one phrase, for the line the server prints on startup.
+    pub fn describe(&self) -> String {
+        self.display().join(", ")
+    }
+
+    /// The scope as the model carries it, `::`-joined.
+    fn display(&self) -> Vec<String> {
+        self.entries.iter().map(|entry| entry.join("::")).collect()
+    }
+}
+
 /// Walks a crate's `src` tree and builds the graph.
-pub fn extract(crate_root: &Path) -> Result<Graph> {
+pub fn extract(crate_root: &Path, scope: &Scope) -> Result<Graph> {
     let src_root = crate_root.join("src");
     anyhow::ensure!(
         src_root.is_dir(),
@@ -26,6 +142,20 @@ pub fn extract(crate_root: &Path) -> Result<Graph> {
 
     let mut files = Vec::new();
     collect_rust_files(&src_root, &mut files);
+
+    // Every module the file layout declares, kept before the scope narrows
+    // things down so that a scope naming a module that is not there can be
+    // answered with the ones that are.
+    let declared: BTreeSet<String> = files
+        .iter()
+        .map(|path| module_prefix_for(path, &src_root).join("::"))
+        .filter(|module| !module.is_empty())
+        .collect();
+
+    // Files outside the scope are never opened. That is the whole point of a
+    // scope: on a crate with ten thousand files, not parsing the nine
+    // thousand you are not reading is the difference that makes it usable.
+    files.retain(|path| scope.may_contain(&module_prefix_for(path, &src_root)));
 
     let parsed: Vec<ParsedFile> = files
         .into_iter()
@@ -48,19 +178,28 @@ pub fn extract(crate_root: &Path) -> Result<Graph> {
     // Pass 1: what this crate defines, and what each module imports.
     let mut index = Index::default();
     let mut use_maps: BTreeMap<String, UseMap> = BTreeMap::new();
+    let mut seen: BTreeSet<String> = BTreeSet::new();
     for parsed in &parsed {
         let module = parsed.module.join("::");
+        seen.insert(module.clone());
         IndexCollector {
             index: &mut index,
             mod_stack: parsed.module.clone(),
+            scope,
+            seen: &mut seen,
         }
         .visit_file(&parsed.file);
         collect_use_maps(&parsed.file, &module, &mut use_maps);
     }
 
+    // A module can be a file or an inline `mod` block, so whether the scope
+    // named a real one is only knowable once pass 1 has walked both. Saying
+    // so beats handing back an empty diagram for a typo.
+    scope.check_matched(&seen, &declared)?;
+
     // Pass 2: nodes and edges, with every name resolved against pass 1.
     let resolver = Resolver { index: &index };
-    let mut collector = Collector::new(&resolver, &use_maps);
+    let mut collector = Collector::new(&resolver, &use_maps, scope);
     for parsed in &parsed {
         collector.run(&parsed.file, &parsed.display, &parsed.module);
     }
@@ -70,6 +209,7 @@ pub fn extract(crate_root: &Path) -> Result<Graph> {
         &resolver,
         &use_maps,
         crate_name(crate_root),
+        scope.display(),
     ))
 }
 
@@ -83,6 +223,7 @@ fn finish(
     resolver: &Resolver,
     use_maps: &BTreeMap<String, UseMap>,
     krate: String,
+    scope: Vec<String>,
 ) -> Graph {
     let mut edges = collector.edges;
     edges.extend(calls::resolve_calls(
@@ -96,6 +237,7 @@ fn finish(
     Graph {
         krate,
         root: "src".to_string(),
+        scope,
         nodes: collector.nodes.into_values().collect(),
         edges: edges.into_iter().collect(),
     }
@@ -176,11 +318,21 @@ pub fn module_prefix_for(path: &Path, src_root: &Path) -> Vec<String> {
 struct IndexCollector<'a> {
     index: &'a mut Index,
     mod_stack: Vec<String>,
+    scope: &'a Scope,
+    /// Every module walked, inline `mod` blocks included, so that a scope can
+    /// be told it named nothing.
+    seen: &'a mut BTreeSet<String>,
 }
 
 impl<'a> IndexCollector<'a> {
     fn module(&self) -> String {
         self.mod_stack.join("::")
+    }
+
+    /// A name outside the scope is not indexed, so nothing resolves to it and
+    /// no edge can point at it — the same treatment another crate's types get.
+    fn in_scope(&self) -> bool {
+        self.scope.contains(&self.mod_stack)
     }
 }
 
@@ -190,11 +342,17 @@ impl<'ast, 'a> Visit<'ast> for IndexCollector<'a> {
             return;
         }
         self.mod_stack.push(i.ident.to_string());
-        visit::visit_item_mod(self, i);
+        if self.scope.may_contain(&self.mod_stack) {
+            self.seen.insert(self.module());
+            visit::visit_item_mod(self, i);
+        }
         self.mod_stack.pop();
     }
 
     fn visit_item_struct(&mut self, i: &'ast syn::ItemStruct) {
+        if !self.in_scope() {
+            return;
+        }
         let module = self.module();
         self.index
             .insert(&module, &i.ident.to_string(), NodeKind::Struct);
@@ -202,6 +360,9 @@ impl<'ast, 'a> Visit<'ast> for IndexCollector<'a> {
     }
 
     fn visit_item_enum(&mut self, i: &'ast syn::ItemEnum) {
+        if !self.in_scope() {
+            return;
+        }
         let module = self.module();
         self.index
             .insert(&module, &i.ident.to_string(), NodeKind::Enum);
@@ -209,6 +370,9 @@ impl<'ast, 'a> Visit<'ast> for IndexCollector<'a> {
     }
 
     fn visit_item_trait(&mut self, i: &'ast syn::ItemTrait) {
+        if !self.in_scope() {
+            return;
+        }
         let module = self.module();
         self.index
             .insert(&module, &i.ident.to_string(), NodeKind::Trait);
@@ -216,6 +380,9 @@ impl<'ast, 'a> Visit<'ast> for IndexCollector<'a> {
     }
 
     fn visit_item_type(&mut self, i: &'ast syn::ItemType) {
+        if !self.in_scope() {
+            return;
+        }
         let module = self.module();
         self.index
             .insert(&module, &i.ident.to_string(), NodeKind::TypeAlias);
@@ -226,10 +393,29 @@ impl<'ast, 'a> Visit<'ast> for IndexCollector<'a> {
 /// Used by the tests, which need fixtures small enough to reason about.
 #[cfg(test)]
 pub fn extract_sources(sources: &[(&str, &str)]) -> Result<Graph> {
+    extract_sources_in(sources, &Scope::default())
+}
+
+#[cfg(test)]
+pub fn extract_sources_in(sources: &[(&str, &str)], scope: &Scope) -> Result<Graph> {
     use anyhow::Context;
+
+    let declared: BTreeSet<String> = sources
+        .iter()
+        .map(|(module, _)| module.to_string())
+        .filter(|module| !module.is_empty())
+        .collect();
 
     let parsed: Vec<ParsedFile> = sources
         .iter()
+        .filter(|(module, _)| {
+            let segments: Vec<String> = if module.is_empty() {
+                Vec::new()
+            } else {
+                module.split("::").map(String::from).collect()
+            };
+            scope.may_contain(&segments)
+        })
         .map(|(module, src)| {
             let file = syn::parse_file(src)
                 .with_context(|| format!("failed to parse fixture module `{module}`"))?;
@@ -253,17 +439,22 @@ pub fn extract_sources(sources: &[(&str, &str)]) -> Result<Graph> {
 
     let mut index = Index::default();
     let mut use_maps: BTreeMap<String, UseMap> = BTreeMap::new();
+    let mut seen: BTreeSet<String> = BTreeSet::new();
     for parsed in &parsed {
+        seen.insert(parsed.module.join("::"));
         IndexCollector {
             index: &mut index,
             mod_stack: parsed.module.clone(),
+            scope,
+            seen: &mut seen,
         }
         .visit_file(&parsed.file);
         collect_use_maps(&parsed.file, &parsed.module.join("::"), &mut use_maps);
     }
+    scope.check_matched(&seen, &declared)?;
 
     let resolver = Resolver { index: &index };
-    let mut collector = Collector::new(&resolver, &use_maps);
+    let mut collector = Collector::new(&resolver, &use_maps, scope);
     for parsed in &parsed {
         collector.run(&parsed.file, &parsed.display, &parsed.module);
     }
@@ -273,6 +464,7 @@ pub fn extract_sources(sources: &[(&str, &str)]) -> Result<Graph> {
         &resolver,
         &use_maps,
         "fixture".to_string(),
+        scope.display(),
     ))
 }
 
@@ -688,5 +880,120 @@ mod tests {
             make.signature.as_deref(),
             Some("fn make(count: usize) -> Vec<Foo>")
         );
+    }
+
+    #[test]
+    fn doc_comments_ride_along_with_the_item_and_its_members() {
+        let g = graph(&[(
+            "",
+            r#"
+            /// What a `Foo` is for.
+            ///
+            /// A second paragraph.
+            pub struct Foo {
+                /// How many.
+                pub count: usize,
+                pub untold: bool,
+            }
+            "#,
+        )]);
+        let foo = g.nodes.iter().find(|n| n.id == "Foo").unwrap();
+        assert_eq!(
+            foo.docs.as_deref(),
+            Some("What a `Foo` is for.\n\nA second paragraph.")
+        );
+        assert_eq!(foo.members[0].docs.as_deref(), Some("How many."));
+        assert_eq!(foo.members[1].docs, None);
+    }
+
+    #[test]
+    fn a_block_doc_comment_keeps_its_relative_indentation() {
+        let g = graph(&[(
+            "",
+            r#"
+            /**
+             * Runs it.
+             *
+             *     indented code
+             */
+            pub fn run() {}
+            "#,
+        )]);
+        let run = g.nodes.iter().find(|n| n.id == "run").unwrap();
+        // The common indent goes, the four spaces that mark code stay.
+        assert_eq!(
+            run.docs.as_deref(),
+            Some("* Runs it.\n*\n*     indented code")
+        );
+    }
+
+    #[test]
+    fn an_undocumented_item_carries_no_docs() {
+        let g = graph(&[("", "pub enum State { On, Off }")]);
+        let state = g.nodes.iter().find(|n| n.id == "State").unwrap();
+        assert_eq!(state.docs, None);
+        assert!(state.members.iter().all(|m| m.docs.is_none()));
+    }
+
+    #[test]
+    fn a_scope_reads_one_module_and_treats_the_rest_as_foreign() {
+        let sources: &[(&str, &str)] = &[
+            ("a", "pub struct Kept;"),
+            ("a::inner", "use crate::b::Gone; pub fn takes(g: Gone) {}"),
+            ("b", "pub struct Gone;"),
+        ];
+        let scope = Scope::new(&["a".to_string()]).unwrap();
+        let g = extract_sources_in(sources, &scope).unwrap();
+
+        let ids: Vec<&str> = g.nodes.iter().map(|n| n.id.as_str()).collect();
+        assert!(ids.contains(&"a::Kept"));
+        assert!(ids.contains(&"a::inner::takes"));
+        // Outside the scope is outside the crate, as far as this run is
+        // concerned: no node, and so no edge either.
+        assert!(!ids.contains(&"b::Gone"));
+        assert!(g.edges.iter().all(|e| e.to != "b::Gone"));
+        assert_eq!(g.scope, vec!["a".to_string()]);
+    }
+
+    #[test]
+    fn a_scope_reaches_a_module_written_inline_in_its_parent() {
+        let sources: &[(&str, &str)] = &[(
+            "",
+            r#"
+            pub struct AtTheRoot;
+            pub mod actions {
+                pub struct Wanted;
+            }
+            "#,
+        )];
+        let scope = Scope::new(&["actions".to_string()]).unwrap();
+        let g = extract_sources_in(sources, &scope).unwrap();
+
+        let ids: Vec<&str> = g.nodes.iter().map(|n| n.id.as_str()).collect();
+        assert_eq!(ids, vec!["actions::Wanted"]);
+    }
+
+    #[test]
+    fn a_scope_written_with_slashes_means_the_same_module() {
+        let a = Scope::new(&["actions/power".to_string()]).unwrap();
+        let b = Scope::new(&["actions::power".to_string()]).unwrap();
+        assert_eq!(a.display(), b.display());
+        assert_eq!(a.display(), vec!["actions::power".to_string()]);
+    }
+
+    #[test]
+    fn no_scope_at_all_reads_the_whole_crate() {
+        let g = graph(&[("a", "pub struct One;"), ("b", "pub struct Two;")]);
+        assert_eq!(g.nodes.len(), 2);
+        assert!(g.scope.is_empty());
+    }
+
+    #[test]
+    fn a_scope_that_names_nothing_says_so_instead_of_drawing_nothing() {
+        let sources: &[(&str, &str)] = &[("a", "pub struct One;"), ("b", "pub struct Two;")];
+        let scope = Scope::new(&["c".to_string()]).unwrap();
+        let err = extract_sources_in(sources, &scope).unwrap_err().to_string();
+        assert!(err.contains("no module `c`"), "{err}");
+        assert!(err.contains("a, b"), "{err}");
     }
 }

@@ -12,7 +12,7 @@ import { isHidden } from "./modules.js";
  * @typedef {{ id: string, kind: ViewKind, name: string, module: string,
  *   owner: string|null, file: string, line: number, visibility: string,
  *   members: import("./model.js").Member[], signature: string|null,
- *   contains?: number }} ViewNode
+ *   docs: string|null, contains?: number }} ViewNode
  * @typedef {{ from: string, fromPort: string|null, to: string,
  *   rel: import("./model.js").Rel, via: import("./model.js").Via,
  *   ambiguous: boolean, count: number }} ViewEdge
@@ -208,6 +208,7 @@ function collapse(nodes, edges, collapsedModules) {
       visibility: "",
       members: [],
       signature: null,
+      docs: null,
       contains: count,
     });
   }

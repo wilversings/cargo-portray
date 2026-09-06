@@ -13,6 +13,7 @@ use crate::extract::calls::{Callee, MethodOwner, PendingCall};
 use crate::extract::types::{
     generic_param_names, walk_bounds, walk_generic_bounds, walk_type, TypeRef,
 };
+use crate::extract::Scope;
 use crate::model::{Edge, Member, Node, NodeKind, Rel, Via};
 use crate::resolve::{join, Resolver, UseMap};
 
@@ -59,6 +60,52 @@ pub fn squeeze(s: &str) -> String {
 
 fn render<T: ToTokens>(node: &T) -> String {
     squeeze(&node.to_token_stream().to_string())
+}
+
+/// The doc comment on an item, as the author wrote it.
+///
+/// `///` and `/** */` both arrive as `#[doc = "..."]`, one attribute per
+/// line, each line still carrying the single space that separates the marker
+/// from the text. That space is stripped and the lines are joined back into
+/// markdown; the common indentation of a `/** */` block goes with it, so a
+/// doc comment written inside an `impl` does not read as one long code block.
+/// Nothing else is interpreted here — formatting markdown is the viewer's job.
+fn docs_of(attrs: &[syn::Attribute]) -> Option<String> {
+    let mut lines: Vec<String> = Vec::new();
+    for attr in attrs {
+        if !attr.path().is_ident("doc") {
+            continue;
+        }
+        let syn::Meta::NameValue(nv) = &attr.meta else {
+            continue;
+        };
+        let syn::Expr::Lit(syn::ExprLit {
+            lit: syn::Lit::Str(text),
+            ..
+        }) = &nv.value
+        else {
+            continue;
+        };
+        lines.extend(text.value().lines().map(str::to_string));
+        // A one-line `#[doc = ""]` has no lines at all, and is a blank line.
+        if text.value().is_empty() {
+            lines.push(String::new());
+        }
+    }
+
+    let indent = lines
+        .iter()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| line.len() - line.trim_start().len())
+        .min()
+        .unwrap_or(0);
+    let text = lines
+        .iter()
+        .map(|line| line.get(indent..).unwrap_or("").trim_end())
+        .collect::<Vec<_>>()
+        .join("\n");
+    let text = text.trim_matches('\n').to_string();
+    (!text.trim().is_empty()).then_some(text)
 }
 
 fn has_test_attr(attrs: &[syn::Attribute]) -> bool {
@@ -134,6 +181,7 @@ struct FnCtx {
 pub struct Collector<'a> {
     resolver: &'a Resolver<'a>,
     use_maps: &'a BTreeMap<String, UseMap>,
+    scope: &'a Scope,
     fallback_uses: UseMap,
     file: String,
     mod_stack: Vec<String>,
@@ -148,10 +196,15 @@ pub struct Collector<'a> {
 }
 
 impl<'a> Collector<'a> {
-    pub fn new(resolver: &'a Resolver<'a>, use_maps: &'a BTreeMap<String, UseMap>) -> Self {
+    pub fn new(
+        resolver: &'a Resolver<'a>,
+        use_maps: &'a BTreeMap<String, UseMap>,
+        scope: &'a Scope,
+    ) -> Self {
         Collector {
             resolver,
             use_maps,
+            scope,
             fallback_uses: UseMap::default(),
             file: String::new(),
             mod_stack: Vec::new(),
@@ -177,6 +230,14 @@ impl<'a> Collector<'a> {
 
     fn module(&self) -> String {
         self.mod_stack.join("::")
+    }
+
+    /// Whether the module being walked is one this run reads. Out of scope
+    /// nothing is recorded at all: no node, no edge, no call site. The
+    /// enclosing `mod` is still walked, because it is what holds the modules
+    /// that *are* in scope.
+    fn in_scope(&self) -> bool {
+        self.scope.contains(&self.mod_stack)
     }
 
     fn uses(&self) -> &UseMap {
@@ -266,6 +327,7 @@ impl<'a> Collector<'a> {
         vis: String,
         kind: NodeKind,
         attrs_line: usize,
+        docs: Option<String>,
     ) -> FnCtx {
         let name = sig.ident.to_string();
         let (id, owner, self_path) = match self.owners.last() {
@@ -305,6 +367,7 @@ impl<'a> Collector<'a> {
             visibility: vis,
             members: Vec::new(),
             signature: Some(render(sig)),
+            docs,
         });
         self.emit_signature(&id, sig);
         self.generics.pop();
@@ -367,11 +430,16 @@ impl<'ast, 'a> Visit<'ast> for Collector<'a> {
             return;
         }
         self.mod_stack.push(i.ident.to_string());
-        visit::visit_item_mod(self, i);
+        if self.scope.may_contain(&self.mod_stack) {
+            visit::visit_item_mod(self, i);
+        }
         self.mod_stack.pop();
     }
 
     fn visit_item_struct(&mut self, i: &'ast ItemStruct) {
+        if !self.in_scope() {
+            return;
+        }
         let name = i.ident.to_string();
         let id = join(&self.module(), &name);
         self.generics.push(generic_param_names(&i.generics));
@@ -388,7 +456,11 @@ impl<'ast, 'a> Visit<'ast> for Collector<'a> {
             let mut refs = Vec::new();
             walk_type(&field.ty, Via::Direct, &mut refs);
             field_refs.push((port.clone(), refs));
-            members.push(Member { port, label });
+            members.push(Member {
+                port,
+                label,
+                docs: docs_of(&field.attrs),
+            });
         }
 
         self.add_node(Node {
@@ -402,6 +474,7 @@ impl<'ast, 'a> Visit<'ast> for Collector<'a> {
             visibility: render(&i.vis),
             members,
             signature: None,
+            docs: docs_of(&i.attrs),
         });
         for (port, refs) in &field_refs {
             self.emit(&id, Some(port), refs, Rel::Field);
@@ -413,6 +486,9 @@ impl<'ast, 'a> Visit<'ast> for Collector<'a> {
     }
 
     fn visit_item_enum(&mut self, i: &'ast ItemEnum) {
+        if !self.in_scope() {
+            return;
+        }
         let name = i.ident.to_string();
         let id = join(&self.module(), &name);
         self.generics.push(generic_param_names(&i.generics));
@@ -439,7 +515,11 @@ impl<'ast, 'a> Visit<'ast> for Collector<'a> {
                 walk_type(&field.ty, Via::Direct, &mut refs);
             }
             variant_refs.push((port.clone(), refs));
-            members.push(Member { port, label });
+            members.push(Member {
+                port,
+                label,
+                docs: docs_of(&variant.attrs),
+            });
         }
 
         self.add_node(Node {
@@ -453,6 +533,7 @@ impl<'ast, 'a> Visit<'ast> for Collector<'a> {
             visibility: render(&i.vis),
             members,
             signature: None,
+            docs: docs_of(&i.attrs),
         });
         for (port, refs) in &variant_refs {
             self.emit(&id, Some(port), refs, Rel::Field);
@@ -464,6 +545,9 @@ impl<'ast, 'a> Visit<'ast> for Collector<'a> {
     }
 
     fn visit_item_type(&mut self, i: &'ast ItemType) {
+        if !self.in_scope() {
+            return;
+        }
         let name = i.ident.to_string();
         let id = join(&self.module(), &name);
         self.generics.push(generic_param_names(&i.generics));
@@ -479,6 +563,7 @@ impl<'ast, 'a> Visit<'ast> for Collector<'a> {
             visibility: render(&i.vis),
             members: Vec::new(),
             signature: Some(render(&i.ty)),
+            docs: docs_of(&i.attrs),
         });
         let mut refs = Vec::new();
         walk_type(&i.ty, Via::Direct, &mut refs);
@@ -488,6 +573,9 @@ impl<'ast, 'a> Visit<'ast> for Collector<'a> {
     }
 
     fn visit_item_trait(&mut self, i: &'ast ItemTrait) {
+        if !self.in_scope() {
+            return;
+        }
         let name = i.ident.to_string();
         let id = join(&self.module(), &name);
         self.generics.push(generic_param_names(&i.generics));
@@ -503,6 +591,7 @@ impl<'ast, 'a> Visit<'ast> for Collector<'a> {
             visibility: render(&i.vis),
             members: Vec::new(),
             signature: None,
+            docs: docs_of(&i.attrs),
         });
 
         let mut supertraits = Vec::new();
@@ -522,6 +611,9 @@ impl<'ast, 'a> Visit<'ast> for Collector<'a> {
     }
 
     fn visit_item_impl(&mut self, i: &'ast ItemImpl) {
+        if !self.in_scope() {
+            return;
+        }
         let self_name = type_head_name(&i.self_ty).unwrap_or_else(|| "?".to_string());
         let self_path = type_head_path(&i.self_ty);
         self.generics.push(generic_param_names(&i.generics));
@@ -582,7 +674,7 @@ impl<'ast, 'a> Visit<'ast> for Collector<'a> {
     }
 
     fn visit_item_fn(&mut self, i: &'ast ItemFn) {
-        if has_test_attr(&i.attrs) {
+        if !self.in_scope() || has_test_attr(&i.attrs) {
             return;
         }
         let ctx = self.record_fn(
@@ -590,6 +682,7 @@ impl<'ast, 'a> Visit<'ast> for Collector<'a> {
             render(&i.vis),
             NodeKind::Fn,
             i.sig.ident.span().start().line,
+            docs_of(&i.attrs),
         );
         self.walk_body(ctx, |me| visit::visit_item_fn(me, i));
     }
@@ -608,6 +701,7 @@ impl<'ast, 'a> Visit<'ast> for Collector<'a> {
             render(&i.vis),
             kind,
             i.sig.ident.span().start().line,
+            docs_of(&i.attrs),
         );
         self.walk_body(ctx, |me| me.visit_block(&i.block));
     }
@@ -621,6 +715,7 @@ impl<'ast, 'a> Visit<'ast> for Collector<'a> {
             String::new(),
             NodeKind::TraitMethod,
             i.sig.ident.span().start().line,
+            docs_of(&i.attrs),
         );
         // A trait method may carry a default body, and what that body calls is
         // as real a dependency as anything an impl writes.
@@ -656,6 +751,9 @@ impl<'ast, 'a> Visit<'ast> for Collector<'a> {
     }
 
     fn visit_item_const(&mut self, i: &'ast ItemConst) {
+        if !self.in_scope() {
+            return;
+        }
         let name = i.ident.to_string();
         let id = join(&self.module(), &name);
         self.add_node(Node {
@@ -669,6 +767,7 @@ impl<'ast, 'a> Visit<'ast> for Collector<'a> {
             visibility: render(&i.vis),
             members: Vec::new(),
             signature: Some(render(&i.ty)),
+            docs: docs_of(&i.attrs),
         });
         let mut refs = Vec::new();
         walk_type(&i.ty, Via::Direct, &mut refs);
@@ -676,6 +775,9 @@ impl<'ast, 'a> Visit<'ast> for Collector<'a> {
     }
 
     fn visit_item_static(&mut self, i: &'ast ItemStatic) {
+        if !self.in_scope() {
+            return;
+        }
         let name = i.ident.to_string();
         let id = join(&self.module(), &name);
         self.add_node(Node {
@@ -689,6 +791,7 @@ impl<'ast, 'a> Visit<'ast> for Collector<'a> {
             visibility: render(&i.vis),
             members: Vec::new(),
             signature: Some(render(&i.ty)),
+            docs: docs_of(&i.attrs),
         });
         let mut refs = Vec::new();
         walk_type(&i.ty, Via::Direct, &mut refs);

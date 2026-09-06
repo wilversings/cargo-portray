@@ -1,6 +1,7 @@
 // What the selected artifact is, and what you can do to it.
 
 import { button, h, section } from "../dom.js";
+import { renderMarkdown } from "../markdown.js";
 import { KIND_LABELS, REL_LABELS } from "../model.js";
 
 /**
@@ -23,6 +24,32 @@ function neighbourLines(graph, node) {
     outgoing.length > 8
       ? h("p", { class: "hint" }, `…and ${outgoing.length - 8} more outgoing`)
       : null,
+  ].filter(Boolean);
+}
+
+/**
+ * The documentation, if there is any: the artifact's own, then each field or
+ * variant that has some.
+ *
+ * The diagram has a marker per doc comment and this panel has all of them at
+ * once, because the two questions are different — "what is this one thing"
+ * while reading the picture, and "what does this artifact say" once you have
+ * picked it.
+ * @param {import("../model.js").GraphNode} node
+ */
+function docLines(node) {
+  const documented = node.members.filter((member) => member.docs);
+  if (!node.docs && documented.length === 0) return [];
+  return [
+    node.docs ? h("div", { class: "doc prose" }, renderMarkdown(node.docs)) : null,
+    ...documented.map((member) =>
+      h(
+        "div",
+        { class: "doc-member" },
+        h("div", { class: "mono doc-member-name" }, member.label),
+        h("div", { class: "doc prose" }, renderMarkdown(member.docs)),
+      ),
+    ),
   ].filter(Boolean);
 }
 
@@ -61,6 +88,7 @@ export function detailsPanel(store, graph, selected) {
     h("p", { class: "hint" }, `${KIND_LABELS[node.kind]} in ${node.module || "the crate root"}`),
     node.owner ? h("p", { class: "hint mono" }, node.owner) : null,
     node.signature ? h("pre", { class: "signature" }, node.signature) : null,
+    ...docLines(node),
     h("p", { class: "hint mono" }, `${node.file}:${node.line}`),
     h(
       "div",

@@ -59,10 +59,31 @@ page, re-laying out whenever a filter changes.
   inherent method, trait method, impl method.
 - **Individual artifacts**, hidden by click or by regex — `Error$` takes out a
   whole family of noise at once.
+- **Documentation markers**, if the circled *i*s are in the way.
 
 Collapsing a module into a single box, with edge weights counting what runs
 underneath, is the way to read a crate this size: zoom out to modules, expand
 only what you are reading.
+
+## The documentation is in the diagram
+
+Anything with a doc comment carries a small circled *i*: on the header of a
+struct, enum or trait, on the row of any field or variant documented on its
+own, and in the corner of a function, method or const. Hover one and the
+comment appears, rendered — headings, lists, `code`, fenced examples with the
+`#` setup lines hidden the way rustdoc hides them. Click it instead and the
+panel stays put so you can read a long one, select from it, or scroll it;
+escape or a click elsewhere dismisses it.
+
+The same text is in the sidebar whenever an artifact is selected, its
+documented fields listed under it, because "what is this one thing" while
+reading the picture and "what does this artifact say" once you have picked it
+are different questions.
+
+The extractor carries the comment exactly as written and the viewer decides
+what it looks like — the markdown it understands is the subset doc comments
+actually use, rendered into elements rather than into a string of HTML, so a
+doc comment full of angle brackets is text and not markup.
 
 ## Two diagrams
 
@@ -112,12 +133,34 @@ cargo portray <crate-root>            # the viewer, with live reload on save
 cargo portray serve  <crate-root> --port 7878
 cargo portray emit   <crate-root> -o graph.json --pretty
 cargo portray export <crate-root> -o site
+cargo portray serve  <crate-root> -m actions -m resource
 ```
 
 `serve` watches the crate's `src` and bumps a counter the page polls; saving a
 `.rs` file redraws the diagram within about a second. It only counts real
 edits — serving the model reads every source file, and treating that as a
 change would make the page reload forever.
+
+## Crates too big to read at once
+
+`--module` (or `-m`, repeatable) narrows what the tool *reads*: with
+`-m actions`, only `src/actions.rs`, `src/actions/**` and any inline
+`mod actions` are opened at all. Nothing else is parsed, indexed or emitted,
+so a crate of ten thousand files costs what its one interesting module costs,
+and the browser is handed a model it can lay out.
+
+It takes a module path in either spelling — `actions::power` or
+`actions/power` — and the page says which one it is looking at, beside the
+crate name.
+
+This is not one of the filters above, and it is the only setting of its kind:
+a filter lives in the browser because changing it should be a click, while a
+scope decides what gets opened, which is a decision that has to be made before
+anything is read. The trade is that within a scope the rest of the crate is as
+invisible as another crate: a type defined outside it does not resolve, and no
+edge points at it. If you want the whole picture with less of it drawn, read
+the whole crate and switch modules off in the sidebar; use `--module` when the
+whole crate is more than you want to parse.
 
 ## Hosting it
 
@@ -195,7 +238,10 @@ to squint for.
 
 Known limits: `#[path = "..."]` attributes are not honoured, macro-generated
 items are invisible, and only the current crate is indexed, so types from
-dependencies do not appear. Test code (`#[test]`, `#[tokio::test]`,
+dependencies do not appear. Under `--module`, "the crate" means the modules
+named: a short name whose real definition is outside the scope resolves to
+nothing, or — if some unrelated type inside the scope happens to share the
+name — to that one. Test code (`#[test]`, `#[tokio::test]`,
 `mod tests`, `#[cfg(test)]`) is skipped on purpose.
 
 ## Layout

@@ -10,14 +10,14 @@
  *   |"trait_method"|"impl_method"|"const"} NodeKind
  * @typedef {"field"|"param"|"return"|"impls"|"supertrait"|"bound"|"call"} Rel
  * @typedef {"direct"|"generic"|"dyn"} Via
- * @typedef {{ port: string, label: string }} Member
+ * @typedef {{ port: string, label: string, docs: string|null }} Member
  * @typedef {{ id: string, kind: NodeKind, name: string, module: string,
  *   owner: string|null, file: string, line: number, visibility: string,
- *   members: Member[], signature: string|null }} GraphNode
+ *   members: Member[], signature: string|null, docs: string|null }} GraphNode
  * @typedef {{ from: string, fromPort: string|null, to: string, rel: Rel,
  *   via: Via, ambiguous: boolean }} GraphEdge
- * @typedef {{ crate: string, root: string, nodes: GraphNode[],
- *   edges: GraphEdge[] }} Graph
+ * @typedef {{ crate: string, root: string, scope: string[],
+ *   nodes: GraphNode[], edges: GraphEdge[] }} Graph
  */
 
 /** @type {NodeKind[]} */

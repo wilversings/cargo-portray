@@ -74,6 +74,8 @@ pub struct Member {
     /// Graphviz port id, so an edge can leave from this exact row.
     pub port: String,
     pub label: String,
+    /// The row's own doc comment, as written. `None` when it has none.
+    pub docs: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -96,6 +98,11 @@ pub struct Node {
     /// Fields or variants; empty for everything that is not a struct or enum.
     pub members: Vec<Member>,
     pub signature: Option<String>,
+    /// The item's doc comment, markdown and all, with the `///` markers and
+    /// the one space after them removed. Carried raw: rendering it is the
+    /// viewer's business, and an extractor that formatted markdown would be
+    /// deciding what the reader sees.
+    pub docs: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
@@ -119,6 +126,10 @@ pub struct Graph {
     #[serde(rename = "crate")]
     pub krate: String,
     pub root: String,
+    /// The modules this run was restricted to, `::`-joined; empty when the
+    /// whole crate was read. Not a filter — it is what was *parsed*, so the
+    /// viewer can say so rather than let a partial crate read as a whole one.
+    pub scope: Vec<String>,
     pub nodes: Vec<Node>,
     pub edges: Vec<Edge>,
 }

@@ -32,7 +32,8 @@ const DEFAULT_PORT: u16 = 7878;
     after_help = "  cargo portray                    (serve is the default)\n  \
                   cargo portray serve ~/src/mycrate\n  \
                   cargo portray emit . -o graph.json\n  \
-                  cargo portray export . -o site\n\n\
+                  cargo portray export . -o site\n  \
+                  cargo portray serve . -m actions   (read one module of a huge crate)\n\n\
                   From a checkout of this crate, run it through cargo with a `--` \
                   separator, which is what tells cargo the rest is not for it:\n  \
                   cargo run -- serve ../.."
@@ -49,6 +50,10 @@ struct Cli {
     #[arg(short, long, default_value_t = DEFAULT_PORT)]
     port: u16,
 
+    /// Read only this module and what is inside it; repeatable.
+    #[arg(short, long = "module", value_name = "PATH")]
+    modules: Vec<String>,
+
     /// Directory holding the viewer; defaults to this crate's `ui`.
     #[arg(long)]
     ui: Option<PathBuf>,
@@ -61,6 +66,11 @@ enum Command {
         /// Crate root (the directory holding Cargo.toml and src/).
         #[arg(default_value = ".")]
         crate_root: PathBuf,
+        /// Read only this module and what is inside it, `actions` or
+        /// `actions::power`; repeatable. Everything outside is not parsed at
+        /// all, so it is as invisible as another crate.
+        #[arg(short, long = "module", value_name = "PATH")]
+        modules: Vec<String>,
         /// Output file; `-` writes to stdout.
         #[arg(short, long, default_value = "graph.json")]
         out: String,
@@ -75,6 +85,11 @@ enum Command {
         crate_root: PathBuf,
         #[arg(short, long, default_value_t = DEFAULT_PORT)]
         port: u16,
+        /// Read only this module and what is inside it, `actions` or
+        /// `actions::power`; repeatable. Everything outside is not parsed at
+        /// all, so it is as invisible as another crate.
+        #[arg(short, long = "module", value_name = "PATH")]
+        modules: Vec<String>,
         /// Directory holding the viewer; defaults to this crate's `ui`.
         #[arg(long)]
         ui: Option<PathBuf>,
@@ -87,6 +102,11 @@ enum Command {
         /// Directory to write the site into; created if it does not exist.
         #[arg(short, long, default_value = "site")]
         out: PathBuf,
+        /// Read only this module and what is inside it, `actions` or
+        /// `actions::power`; repeatable. Everything outside is not parsed at
+        /// all, so it is as invisible as another crate.
+        #[arg(short, long = "module", value_name = "PATH")]
+        modules: Vec<String>,
         /// Directory holding the viewer; defaults to this crate's `ui`.
         #[arg(long)]
         ui: Option<PathBuf>,
@@ -112,16 +132,18 @@ fn main() -> Result<()> {
     let command = cli.command.unwrap_or(Command::Serve {
         crate_root: cli.crate_root,
         port: cli.port,
+        modules: cli.modules,
         ui: cli.ui,
     });
 
     match command {
         Command::Emit {
             crate_root,
+            modules,
             out,
             pretty,
         } => {
-            let graph = extract::extract(&crate_root)?;
+            let graph = extract::extract(&crate_root, &extract::Scope::new(&modules)?)?;
             let json = if pretty {
                 serde_json::to_string_pretty(&graph)?
             } else {
@@ -142,12 +164,14 @@ fn main() -> Result<()> {
         Command::Serve {
             crate_root,
             port,
+            modules,
             ui,
-        } => serve::run(&crate_root, port, ui),
+        } => serve::run(&crate_root, port, &extract::Scope::new(&modules)?, ui),
         Command::Export {
             crate_root,
             out,
+            modules,
             ui,
-        } => export::run(&crate_root, &out, ui),
+        } => export::run(&crate_root, &out, &extract::Scope::new(&modules)?, ui),
     }
 }

@@ -34,11 +34,12 @@ invariants below exist to keep that seam clean.
 ## Build and test
 
 ```sh
-cargo test                                  # 21 tests, all must pass
+cargo test                                  # 29 tests, all must pass
 cargo clippy --all-targets -- -D warnings
 cargo fmt --all
 cargo run -- serve .                        # the viewer, on 127.0.0.1:7878
 cargo run -- export . -o site               # the same viewer, as a static site
+cargo run -- serve . -m extract             # one module of it, and nothing else
 ```
 
 **Before declaring any change done:** `cargo fmt --all`, then clippy with
@@ -68,6 +69,17 @@ the page and look at it — see *Checking the viewer* below.
    show.** No `--exclude` flags, no "skip private items" switches, no
    pre-filtering to keep the output small. A filter that lives in Rust is a
    filter the user has to restart the program to change.
+
+   `--module` is the one thing that narrows the Rust side, and it is not a
+   filter: it is a **scope**, and it says which files are opened at all. That
+   is a decision that cannot be made in the browser, because by the time the
+   browser has the model the parsing has already happened — which on a crate
+   too large to parse, ship and lay out is the whole problem. Within a scope
+   the tool behaves as though the rest of the crate were a different crate:
+   out-of-scope modules are not indexed, so nothing resolves to them and no
+   edge points at them. Keep it that way. A second knob that trimmed the
+   *output* while still reading everything would be a filter in Rust, and
+   belongs in `ui/` instead.
 4. **The served page and the exported page are the same files.** `export`
    copies `ui/` byte for byte and rewrites exactly one `<meta>` tag, so a bug
    can never exist in only one of them. Do not add a second entry point, a
@@ -114,6 +126,13 @@ the page and look at it — see *Checking the viewer* below.
   is not your `Timer::from_secs`. A bare name with several definitions emits
   **all** of them flagged `ambiguous`, never one of them silently; the
   `ambiguous` checkbox is what makes a call graph readable either way.
+- **Doc comments are carried, never rendered.** `docs_of` in
+  `src/extract/visitor.rs` joins the `#[doc = "..."]` attributes back into the
+  markdown the author wrote, strips the space after the marker and the common
+  indent, and stops. What a heading looks like is the viewer's business; an
+  extractor that emitted HTML would be deciding what the reader sees, and the
+  model would stop being a model. Members carry their own: a field's doc
+  belongs to the row, not to the struct.
 - **Node ids are structural, not display strings.** `module::Type`,
   `module::Type::method`, `module::<Type as Trait>::method`. They are the
   handle a click maps back through and the key edges join on, so they must be
@@ -131,6 +150,21 @@ the page and look at it — see *Checking the viewer* below.
   on top of the first. This is the single most-regressed thing in the project:
   if labels start spilling out of their boxes or the keyword runs into the type
   name, this is why.
+- **The documentation marker is drawn, not written.** `dot.js` puts a bare
+  letter in the cell and a `portray-doc:` / `portray-node:` href on it;
+  `render.js` rings it with an SVG circle once Graphviz has placed everything.
+  Not `\u24d8`: that character has no glyph in many system fonts and comes out
+  of the fallback as a squashed oval. The href is a fake scheme because an
+  `<a>` is the only thing Graphviz carries from a *table cell* through layout
+  into the SVG — nothing ever navigates to one, and the click handler cancels
+  the default. Whole-node markers use the second scheme because a plain node
+  has no cell to sit in, so the viewer places that one itself, in the width
+  `renderPlainNode` added for it.
+- **`markdown.js` renders into elements, never into HTML.** Doc comments are
+  someone else's text: built as DOM nodes, a comment full of angle brackets is
+  a comment full of angle brackets, and there is no escaping to get wrong. Its
+  inline pattern is built per call — one shared `/g` regex, recursed into by a
+  link label, resets `lastIndex` under the outer walk and loops forever.
 - **Filter state lives in the URL hash; appearance lives in localStorage.** A
   view is something you share, so it belongs in the link — and only what
   differs from the defaults goes in, so a plain view has a plain link. A colour
@@ -217,9 +251,10 @@ obvious in a picture.
 | New type position | an arm in `src/extract/types.rs` with its `Via` stated |
 | New call shape | a `visit_expr_*` hook in `src/extract/visitor.rs` feeding `Callee`, and a resolution rule in `src/extract/calls.rs` |
 | New preset | `presetPanel` in `ui/src/panels/filters.js`, setting kinds and rels together |
+| New markdown syntax | a block rule in `renderMarkdown` or an arm in `inline`, both in `ui/src/markdown.js`, plus a style under `.prose` in `style.css` |
 | New filter | a field on `FilterState` in `ui/src/state.js` (defaults included, so the URL stays short), the rule in `ui/src/filter.js`, a control in `ui/src/panels/` |
 | New panel | `ui/src/panels/<name>.js`, mounted in `renderSidebar` in `ui/src/main.js` |
-| New subcommand | a variant in `src/main.rs` plus its own module |
+| New subcommand | a variant in `src/main.rs` plus its own module (and a `--module` scope, like the others) |
 
 ## Known limits
 
@@ -227,6 +262,12 @@ Deliberate, and worth knowing before you chase one as a bug: `#[path = "..."]`
 attributes are not honoured, macro-generated items are invisible, only the
 current crate is indexed so types from dependencies do not appear, and roots
 are inferred from the file layout rather than read from `cargo metadata`.
+
+`--module` narrows "the current crate" to the modules named, which costs
+resolution accuracy in one specific way: a short name whose definition lives
+outside the scope resolves to nothing, or — when something inside the scope
+happens to share the name — to the wrong one. That is the price of not parsing
+the rest, and it is why the scope is never the default.
 
 Calls have two more. `syn` does not parse macro bodies, so a call made inside
 `write!`, `bail!` or any other macro is not seen; and calls the language

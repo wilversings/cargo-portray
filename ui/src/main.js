@@ -9,6 +9,7 @@ import { artifactPanel, optionsPanel, presetPanel, relationPanel } from "./panel
 import { hiddenPanel } from "./panels/hidden.js";
 import { modulePanel } from "./panels/modules.js";
 import { clearAppearance, defaultAppearance, loadAppearance, saveAppearance } from "./appearance.js";
+import { hideDoc, hoverDoc, isPinned, pinDoc } from "./doctip.js";
 import { markSelected, renderInto, resetView } from "./render.js";
 import { defaultState, onHashNavigation, readHash, reconcile, Store } from "./state.js";
 
@@ -30,7 +31,7 @@ const live = source === "api/graph";
 const store = new Store(readHash());
 let appearance = loadAppearance();
 /** @type {import("./model.js").Graph} */
-let graph = { crate: "", root: "", nodes: [], edges: [] };
+let graph = { crate: "", root: "", scope: [], nodes: [], edges: [] };
 /** @type {string|null} */
 let selected = null;
 let lastDot = "";
@@ -45,8 +46,14 @@ async function loadGraph() {
     return;
   }
   graph = await response.json();
-  crateName.textContent = graph.crate;
-  document.title = `portray — ${graph.crate}`;
+  // A scoped run read part of a crate, and a page that did not say so would
+  // read as a whole crate with things missing.
+  const scope = graph.scope?.length ? ` · ${graph.scope.join(", ")}` : "";
+  crateName.textContent = graph.crate + scope;
+  crateName.title = graph.scope?.length
+    ? `only ${graph.scope.join(" and ")} was read; the rest of the crate was not parsed`
+    : graph.crate;
+  document.title = `portray — ${graph.crate}${scope}`;
 
   // Every caller redraws right after this, so the state can be swapped
   // without notifying.
@@ -187,6 +194,8 @@ function suffix() {
 async function draw() {
   if (pending) return;
   pending = true;
+  // The SVG the panel was opened over is about to be replaced.
+  hideDoc(true);
   try {
     const state = store.get();
     const view = buildView(graph, state);
@@ -206,6 +215,15 @@ async function draw() {
         highlight(id);
       },
       onActivate: (id) => store.update({ focus: id, solo: null }),
+      onDocHover: (target, event) => {
+        const tip = docTip(target, event);
+        if (tip) hoverDoc(tip);
+      },
+      onDocPin: (target, event) => {
+        const tip = docTip(target, event);
+        if (tip) pinDoc(tip);
+      },
+      onDocLeave: () => hideDoc(),
     });
 
     const edgeNote =
@@ -220,6 +238,37 @@ async function draw() {
   } finally {
     pending = false;
   }
+}
+
+/**
+ * What a documentation marker points at: the artifact itself, or the one
+ * field or variant the marker sits beside.
+ * @param {import("./render.js").DocTarget} target
+ * @param {MouseEvent} event
+ * @returns {import("./doctip.js").DocTip|null}
+ */
+function docTip(target, event) {
+  const node = graph.nodes.find((candidate) => candidate.id === target.id);
+  if (!node) return null;
+  if (target.port) {
+    const member = node.members.find((candidate) => candidate.port === target.port);
+    if (!member?.docs) return null;
+    return {
+      title: member.label,
+      subtitle: `${node.name} in ${node.module || "the crate root"}`,
+      docs: member.docs,
+      x: event.clientX,
+      y: event.clientY,
+    };
+  }
+  if (!node.docs) return null;
+  return {
+    title: node.name,
+    subtitle: node.signature ?? `${node.kind} in ${node.module || "the crate root"}`,
+    docs: node.docs,
+    x: event.clientX,
+    y: event.clientY,
+  };
 }
 
 /** Outlines the clicked node without paying for a whole re-layout. */
@@ -269,6 +318,15 @@ async function main() {
     void draw();
   });
   onHashNavigation((state) => store.update(state));
+
+  // A pinned documentation panel is dismissed the way any panel over a page
+  // is: by pressing escape, or by clicking away from it.
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") hideDoc(true);
+  });
+  document.addEventListener("mousedown", () => {
+    if (isPinned()) hideDoc(true);
+  });
 
   renderToolbar();
   renderSidebar();

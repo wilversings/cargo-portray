@@ -13,7 +13,12 @@ use anyhow::{Context, Result};
 use notify::{EventKind, RecursiveMode, Watcher};
 use tiny_http::{Header, Request, Response, Server};
 
-pub fn run(crate_root: &Path, port: u16, ui_dir: Option<PathBuf>) -> Result<()> {
+pub fn run(
+    crate_root: &Path,
+    port: u16,
+    scope: &crate::extract::Scope,
+    ui_dir: Option<PathBuf>,
+) -> Result<()> {
     let crate_root = crate::ui::crate_root(crate_root)?;
     let ui_dir = crate::ui::dir(ui_dir)?;
 
@@ -23,19 +28,30 @@ pub fn run(crate_root: &Path, port: u16, ui_dir: Option<PathBuf>) -> Result<()> 
     let server = Server::http(("127.0.0.1", port))
         .map_err(|e| anyhow::anyhow!("could not bind 127.0.0.1:{port}: {e}"))?;
     eprintln!(
-        "portray: http://127.0.0.1:{port}  ({})",
-        crate_root.display()
+        "portray: http://127.0.0.1:{port}  ({}{})",
+        crate_root.display(),
+        if scope.is_everything() {
+            String::new()
+        } else {
+            format!(", module {}", scope.describe())
+        }
     );
 
     for request in server.incoming_requests() {
-        if let Err(err) = handle(request, &crate_root, &ui_dir, &version) {
+        if let Err(err) = handle(request, &crate_root, &ui_dir, scope, &version) {
             eprintln!("portray: {err:#}");
         }
     }
     Ok(())
 }
 
-fn handle(request: Request, crate_root: &Path, ui_dir: &Path, version: &AtomicU64) -> Result<()> {
+fn handle(
+    request: Request,
+    crate_root: &Path,
+    ui_dir: &Path,
+    scope: &crate::extract::Scope,
+    version: &AtomicU64,
+) -> Result<()> {
     let url = request.url().split('?').next().unwrap_or("/").to_string();
     match url.as_str() {
         "/api/version" => {
@@ -43,7 +59,7 @@ fn handle(request: Request, crate_root: &Path, ui_dir: &Path, version: &AtomicU6
             respond(request, 200, "application/json", body.into_bytes())
         }
         "/api/graph" => {
-            let body = match crate::extract::extract(crate_root) {
+            let body = match crate::extract::extract(crate_root, scope) {
                 Ok(graph) => serde_json::to_vec(&graph)?,
                 Err(err) => {
                     let message = serde_json::to_string(&err.to_string())?;

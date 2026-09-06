@@ -20,12 +20,17 @@ use anyhow::{Context, Result};
 const LIVE_SOURCE: &str = "content=\"api/graph\"";
 const STATIC_SOURCE: &str = "content=\"graph.json\"";
 
-pub fn run(crate_root: &Path, out: &Path, ui_dir: Option<PathBuf>) -> Result<()> {
+pub fn run(
+    crate_root: &Path,
+    out: &Path,
+    scope: &crate::extract::Scope,
+    ui_dir: Option<PathBuf>,
+) -> Result<()> {
     let crate_root = crate::ui::crate_root(crate_root)?;
     let ui_dir = crate::ui::dir(ui_dir)?;
     prepare(out)?;
 
-    let graph = crate::extract::extract(&crate_root)?;
+    let graph = crate::extract::extract(&crate_root, scope)?;
     let nodes = graph.nodes.len();
     let edges = graph.edges.len();
     std::fs::write(out.join("graph.json"), serde_json::to_vec(&graph)?)
