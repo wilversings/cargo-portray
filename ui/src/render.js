@@ -12,8 +12,14 @@ function graphviz() {
   return graphvizPromise;
 }
 
-/** @type {{ fit(): void }|null} */
+/** @type {{ fit(): void, setLocked(on: boolean): void }|null} */
 let panZoom = null;
+/**
+ * Whether the diagram is pinned where the reader left it. It lives here rather
+ * than in the pan itself because every redraw builds a new SVG and a new pan:
+ * a lock the reader switched on would come off under a filter click otherwise.
+ */
+let locked = false;
 
 /** @typedef {{ onSelect(id: string): void, onActivate(id: string): void }} Hooks */
 
@@ -41,6 +47,7 @@ export async function renderInto(container, dot, selected, hooks) {
 
   bindNodes(element, selected, hooks);
   panZoom = attachPanZoom(element);
+  panZoom.setLocked(locked);
 
   return { svg, elapsedMs };
 }
@@ -100,4 +107,14 @@ export function markSelected(group, on) {
 
 export function resetView() {
   panZoom?.fit();
+}
+
+/**
+ * Pins the view: the wheel and the drag stop moving it, and it survives the
+ * redraws that follow. `fit` still works — it is asked for, not stumbled into.
+ * @param {boolean} on
+ */
+export function setDiagramLocked(on) {
+  locked = on;
+  panZoom?.setLocked(on);
 }

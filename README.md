@@ -48,7 +48,11 @@ page, re-laying out whenever a filter changes.
   cross-module dependency stays visible instead of being cut off. Switching a
   module off switches off everything inside it, and a parent whose children
   are only partly off shows the third checkbox state rather than claiming to
-  be fully on.
+  be fully on. A crate with more modules than fit on a screen has a search box
+  over the tree: type any part of a path — `extract`, or `extract::c` — and
+  the list narrows to what holds it, shown with the modules it sits in and
+  with the matched text marked. It shortens the list, never the diagram, so it
+  stays out of the link you share.
 - **Edge type**, along two independent axes: what the relationship *is*
   (struct member, method argument, return type, implements, supertrait,
   generic bound, calls) and how the type was *reached* (named directly, as a
@@ -69,6 +73,15 @@ sidebar is dragged wider by the seam it shares with the diagram, because a
 crate whose module paths run four deep needs more than three hundred pixels
 and one whose filters are already set needs none of it. The width is kept in
 this browser, like the colours.
+
+Two switches float over the top-right of the diagram, and draw their own
+state. The **padlock** pins the view: shut, the wheel and a stray drag stop
+moving a diagram you have already framed, and it stays pinned across the
+re-layouts that follow. The **corner arrows** take the panels and the toolbar
+away and leave the drawing, with the status line under it; Escape — or the
+switch again — brings them back. Clicking still selects either way, and neither
+switch is part of the view: they change what is around the diagram, not what is
+in it, so they stay out of the link you share.
 
 ## The documentation is in the sidebar
 

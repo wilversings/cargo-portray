@@ -206,7 +206,30 @@ the page and look at it — see *Checking the viewer* below.
   which ones are shut — like which module rows are shut, and how wide the
   sidebar is — says nothing about what is drawn. None of it belongs in the URL:
   panel folding lives in `dom.js`, module folding in a set `main.js` owns, and
-  the sidebar's width in localStorage beside the colours.
+  the sidebar's width in localStorage beside the colours. The module tree's
+  search box is the same kind of thing: it narrows which rows are *listed* and
+  never which artifacts are *drawn*, so it lives beside the folds in `main.js`
+  rather than in `FilterState`, and a search left in the box changes nothing
+  about the link you share. It overrides folding while it is on, because a
+  match counted in the line under the box and then left shut inside a folded
+  ancestor reads as a lie.
+- **Full screen and the lock are display-only too, and not even remembered.**
+  The two switches floating over the diagram — one hides the sidebar and the
+  toolbar, the other pins the view so the wheel and a drag stop moving it —
+  change what is around the diagram and never what is in it, so like the folds
+  they stay out of the URL. Unlike the sidebar's width they stay out of
+  localStorage as well: a reader who cleared the chrome to look at one diagram
+  should not find it gone the next time the page opens, and Escape is the way
+  back for anyone who took the switch for a one-way door. The status line is
+  not chrome — it is where a view with nothing in it says why — so it stays.
+  The lock itself lives in `render.js` rather than in `panzoom.js` because
+  every redraw builds a new SVG and a new pan, and a lock the reader switched
+  on must survive the next filter click; it stops the gestures only, so a click
+  still selects and `fit` still fits. Both switches are icons, drawn by `icon`
+  in `dom.js` as paths on a 24-unit grid, because an icon set is a dependency
+  and two outlines are a dozen path commands — and because a button with no
+  text in it has nothing for a screen reader to read, `toggle` promotes the
+  tooltip to the accessible name whenever the label is not a string.
 - **The module tree's guide lines are computed, not decorative.** A guide
   column is drawn only where the subtree it stands for has rows below the one
   being drawn, and the row's own column turns into a tee or an elbow depending

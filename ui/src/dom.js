@@ -97,6 +97,62 @@ export function button(label, onClick, title) {
 }
 
 /**
+ * A button that is either on or off, and says which — `aria-pressed` is what a
+ * screen reader reads it by, and what the stylesheet colours it by.
+ *
+ * The label may be an icon, in which case there is nothing on the button for a
+ * screen reader to read: the `title` becomes the name as well as the tooltip,
+ * so a switch that shows only a padlock still announces what it does.
+ *
+ * @param {string|Node} label
+ * @param {boolean} pressed
+ * @param {() => void} onClick
+ * @param {string} [title]
+ */
+export function toggle(label, pressed, onClick, title) {
+  const name = title ?? (typeof label === "string" ? label : "");
+  return h(
+    "button",
+    {
+      type: "button",
+      "aria-pressed": String(pressed),
+      "aria-label": typeof label === "string" ? null : name,
+      onclick: onClick,
+      title: name,
+    },
+    label,
+  );
+}
+
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+/**
+ * An icon, as strokes on a 24-unit grid.
+ *
+ * Drawn here rather than fetched: an icon set is a dependency, and two
+ * switches' worth of outline is a dozen path commands. Everything about how it
+ * looks — the size, the weight, the colour it inherits — is in the stylesheet;
+ * these are only the shapes. `createElementNS`, because an `<svg>` built with
+ * `createElement` is an unknown HTML element that draws nothing.
+ *
+ * @param {...string} paths
+ */
+export function icon(...paths) {
+  const svg = document.createElementNS(SVG_NS, "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  // The button carries the name; the drawing inside it is not a second thing
+  // to read out.
+  svg.setAttribute("aria-hidden", "true");
+  svg.setAttribute("focusable", "false");
+  for (const d of paths) {
+    const path = document.createElementNS(SVG_NS, "path");
+    path.setAttribute("d", d);
+    svg.append(path);
+  }
+  return svg;
+}
+
+/**
  * @param {string} value
  * @param {string[]} options
  * @param {(value: string) => void} onChange

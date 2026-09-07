@@ -15,6 +15,12 @@ export function attachPanZoom(svg) {
       : { x: 0, y: 0, w: 1000, h: 1000 };
 
   let view = { ...initial };
+  /**
+   * A locked diagram ignores the gestures that move it — the wheel and the
+   * drag — and nothing else: a click still selects, because selecting a node
+   * does not shift the picture the reader has framed.
+   */
+  let locked = false;
 
   svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
   svg.style.touchAction = "none";
@@ -47,6 +53,7 @@ export function attachPanZoom(svg) {
   svg.addEventListener(
     "wheel",
     (event) => {
+      if (locked) return;
       event.preventDefault();
       const anchor = toUser(event);
       const step = Math.exp(event.deltaY * 0.002);
@@ -82,7 +89,7 @@ export function attachPanZoom(svg) {
   let dragging = null;
 
   svg.addEventListener("pointerdown", (event) => {
-    if (event.button !== 0) return;
+    if (locked || event.button !== 0) return;
     // Without this the browser starts a text selection and the drag paints
     // every label it passes over blue. It does not stop the click.
     event.preventDefault();
@@ -124,6 +131,17 @@ export function attachPanZoom(svg) {
     fit() {
       view = { ...initial };
       apply();
+    },
+    /** @param {boolean} on */
+    setLocked(on) {
+      locked = on;
+      // A press already under way when the lock came on would otherwise pan
+      // on the next move, after the gesture was supposed to have stopped.
+      if (on) {
+        press = null;
+        dragging = null;
+        svg.style.cursor = "";
+      }
     },
   };
 }

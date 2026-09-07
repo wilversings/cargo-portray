@@ -87,3 +87,32 @@ export function showModule(module, hiddenModules, allModules) {
 export function showSubtree(module, hiddenModules) {
   return hiddenModules.filter((hidden) => !isUnder(hidden, module));
 }
+
+/**
+ * The rows a search box leaves in the tree: every module whose path holds
+ * `query`, plus the ancestors those hang from.
+ *
+ * The whole path is searched rather than the last segment, so `extract`
+ * brings `extract::calls` with it — a subtree arrives whole, the way you
+ * asked for it. The ancestors come along because a match shown without them
+ * is a flat list, and the point of the tree is where a module sits.
+ *
+ * @param {string[]} modules every module in the tree
+ * @param {string} query
+ * @returns {{ matched: Set<string>, shown: Set<string> }}
+ */
+export function searchModules(modules, query) {
+  const needle = query.trim().toLowerCase();
+  if (needle === "") return { matched: new Set(modules), shown: new Set(modules) };
+
+  const matched = new Set(modules.filter((module) => module.toLowerCase().includes(needle)));
+  const shown = new Set(matched);
+  for (const module of matched) {
+    let ancestor = module;
+    while (ancestor !== "") {
+      ancestor = parentModule(ancestor);
+      shown.add(ancestor);
+    }
+  }
+  return { matched, shown };
+}

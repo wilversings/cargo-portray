@@ -1,17 +1,24 @@
-// The module tree: switch a module off, collapse it into one box, study one
-// module on its own, or fold its row away in this list.
+// The module tree: find a module by name, switch it off, collapse it into one
+// box, study it on its own, or fold its row away in this list.
 //
 // Switching a module off switches off everything inside it, so a parent whose
 // children are only partly switched off shows the third checkbox state rather
 // than claiming to be fully on.
 //
-// Folding is display-only — it never touches the diagram, so it lives in a
-// set the caller owns rather than in filter state: nothing about which rows
-// are expanded belongs in a shared link.
+// Folding and the search box are display-only — neither touches the diagram,
+// so they live in state the caller owns rather than in filter state: nothing
+// about which rows are listed belongs in a shared link.
 
 import { button, h, section } from "../dom.js";
 import { isUnder, moduleTree } from "../model.js";
-import { hideModule, isHidden, isPartlyHidden, showModule, showSubtree } from "../modules.js";
+import {
+  hideModule,
+  isHidden,
+  isPartlyHidden,
+  searchModules,
+  showModule,
+  showSubtree,
+} from "../modules.js";
 
 /**
  * @param {import("../model.js").Graph} graph
@@ -63,28 +70,68 @@ function guideColumns(visible) {
 }
 
 /**
+ * The name with the searched-for text marked in it.
+ *
+ * Only the last segment is drawn in a row, so a row listed because an
+ * ancestor matched carries no mark — which is the difference worth seeing:
+ * these are the ones the tree came with, not the ones asked for.
+ *
+ * @param {string} name
+ * @param {string} query
+ * @returns {(Node|string)[]}
+ */
+function markMatch(name, query) {
+  const needle = query.trim().toLowerCase();
+  if (needle === "") return [name];
+
+  const parts = [];
+  let cut = 0;
+  for (;;) {
+    const at = name.toLowerCase().indexOf(needle, cut);
+    if (at === -1) break;
+    if (at > cut) parts.push(name.slice(cut, at));
+    parts.push(h("mark", {}, name.slice(at, at + needle.length)));
+    cut = at + needle.length;
+  }
+  if (cut < name.length) parts.push(name.slice(cut));
+  return parts;
+}
+
+/**
  * @param {import("../state.js").Store} store
  * @param {import("../model.js").Graph} graph
- * @param {Set<string>} folded modules whose rows are collapsed away
- * @param {(module: string) => void} onToggleFold
+ * @param {{ folded: Set<string>, search: string,
+ *   onToggleFold: (module: string) => void,
+ *   onSearch: (query: string) => void }} tree the display-only state of this
+ *   list: which rows are folded away, and what is being looked for
  */
-export function modulePanel(store, graph, folded, onToggleFold) {
+export function modulePanel(store, graph, tree) {
   const state = store.get();
   const modules = moduleTree(graph.nodes);
+  const { matched, shown } = searchModules(modules, tree.search);
+  const searching = tree.search.trim() !== "";
+  const listed = modules.filter((module) => shown.has(module));
+  // A caret is drawn for children that are listed, not for children that
+  // exist: a search that took the last one away must not leave a row opening
+  // onto nothing.
   const hasChildren = (module) =>
-    modules.some((candidate) => candidate !== module && isUnder(candidate, module));
+    listed.some((candidate) => candidate !== module && isUnder(candidate, module));
 
+  // Folding and searching both shorten the list, and the search wins while it
+  // is on: a match left shut inside a folded ancestor would be counted in the
+  // line under the box and missing from the tree under it.
+  //
   // Sorted order keeps a subtree contiguous, so a folded ancestor's
   // descendants can be skipped just by tracking the one we are inside.
   const visible = [];
   let hideUnder = /** @type {string|null} */ (null);
-  for (const module of modules) {
+  for (const module of listed) {
     if (hideUnder !== null) {
       if (isUnder(module, hideUnder)) continue;
       hideUnder = null;
     }
     visible.push(module);
-    if (folded.has(module)) hideUnder = module;
+    if (!searching && tree.folded.has(module)) hideUnder = module;
   }
   const guides = guideColumns(visible);
 
@@ -95,7 +142,7 @@ export function modulePanel(store, graph, folded, onToggleFold) {
     const collapsed = state.collapsedModules.includes(module);
     const solo = state.solo === module;
     const branches = hasChildren(module);
-    const isFolded = folded.has(module);
+    const isFolded = !searching && tree.folded.has(module);
 
     const box = h("input", {
       type: "checkbox",
@@ -133,13 +180,15 @@ export function modulePanel(store, graph, folded, onToggleFold) {
         // A guide column is as wide as a caret and lines up with one, so the
         // line a child hangs from descends from its parent's own caret.
         ...guides[index].map((shape) => h("span", { class: `guide ${shape}` })),
-        branches
+        // While a search is on every listed row is open, so the caret has
+        // nothing to say and nothing to do.
+        branches && !searching
           ? h(
               "button",
               {
                 type: "button",
                 class: `twisty${isFolded ? " folded" : ""}`,
-                onclick: () => onToggleFold(module),
+                onclick: () => tree.onToggleFold(module),
                 title: isFolded ? "expand this module's rows" : "collapse this module's rows",
               },
               "▾",
@@ -147,7 +196,11 @@ export function modulePanel(store, graph, folded, onToggleFold) {
           : h("span", { class: "twisty" }),
       ),
       box,
-      h("span", { class: "module-name", title: module || "crate root" }, name),
+      h(
+        "span",
+        { class: "module-name", title: module || "crate root" },
+        ...(matched.has(module) ? markMatch(name, tree.search) : [name]),
+      ),
       h("span", { class: "module-count" }, String(nodeCount(graph, module))),
       h(
         "span",
@@ -166,8 +219,40 @@ export function modulePanel(store, graph, folded, onToggleFold) {
     );
   });
 
+  const searchBox = h("input", {
+    type: "text",
+    id: "module-search",
+    class: "module-search",
+    placeholder: "find a module…",
+    value: tree.search,
+    oninput: (event) => tree.onSearch(event.target.value),
+    // Escape is how a search box is put away everywhere else on the web, and
+    // the field keeps the focus so the next thing typed starts a new one.
+    onkeydown: (event) => {
+      if (event.key === "Escape" && tree.search !== "") {
+        event.stopPropagation();
+        tree.onSearch("");
+      }
+    },
+  });
+
   return section(
     "Modules",
+    h(
+      "div",
+      { class: "row-actions" },
+      searchBox,
+      searching ? button("×", () => tree.onSearch(""), "clear the search") : null,
+    ),
+    searching
+      ? h(
+          "p",
+          { class: "hint" },
+          matched.size === 0
+            ? `No module here holds “${tree.search.trim()}”. Clear the box to see the tree again.`
+            : `${matched.size} of ${modules.length} modules match, with the ones they sit in.`,
+        )
+      : null,
     state.solo !== null
       ? h(
           "p",

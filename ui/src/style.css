@@ -363,6 +363,20 @@ button:hover {
 
 /* ----------------------------------------------------------- module tree */
 
+/* The search box fills the row it shares with its clear button, so the tree
+   below it keeps its full width and the box never wraps. */
+.module-search {
+  flex: 1;
+  min-width: 0;
+}
+
+.module-row mark {
+  padding: 0 1px;
+  border-radius: 2px;
+  background: #ffe9a8;
+  color: inherit;
+}
+
 .module-tree {
   max-height: 40vh;
   overflow-y: auto;
@@ -588,6 +602,20 @@ button:hover {
 }
 
 #toolbar {
+  grid-row: 1;
+}
+
+#viewport,
+#canvas-tools {
+  grid-row: 2;
+  grid-column: 1;
+}
+
+#status {
+  grid-row: 3;
+}
+
+#toolbar {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -626,6 +654,66 @@ button:hover {
   border-top: 1px solid var(--line);
   color: var(--muted);
   font-variant-numeric: tabular-nums;
+}
+
+/* The switches that float over the diagram. They share the viewport's grid
+   cell rather than being positioned against the canvas, so they sit at the top
+   of the drawing whether or not the toolbar above it is there. */
+#canvas-tools {
+  z-index: 2;
+  justify-self: end;
+  align-self: start;
+  display: flex;
+  gap: 6px;
+  margin: 8px 12px;
+}
+
+/* Square, because what is in them is a drawing and not a word: an icon padded
+   as though it were text sits off-centre in a box the wrong shape. */
+#canvas-tools button {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  /* Legible over whatever the diagram happens to have drawn underneath. */
+  background: rgb(255 255 255 / 92%);
+  box-shadow: 0 1px 3px rgb(31 41 51 / 14%);
+}
+
+/* The shapes are in `icon`; the weight and the colour are here, so a switch
+   that is on colours its drawing along with its border. */
+#canvas-tools svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentcolor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+#canvas-tools button[aria-pressed="true"] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Full screen: the panels and the toolbar go, the diagram and the line that
+   explains it stay. The seam goes with the sidebar — there is nothing left to
+   drag — and the grid loses the column it stood in. */
+body.chrome-hidden #sidebar,
+body.chrome-hidden #sidebar-resize,
+body.chrome-hidden #toolbar {
+  display: none;
+}
+
+body.chrome-hidden #app {
+  grid-template-columns: 1fr;
+}
+
+/* A locked diagram does not offer the hand it cannot follow. */
+body.diagram-locked #viewport svg {
+  cursor: default;
 }
 
 /* ------------------------------------------------------- appearance panel */

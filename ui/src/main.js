@@ -1,6 +1,6 @@
 // Wiring: fetch the model, keep the filter state, redraw when either moves.
 
-import { button, h } from "./dom.js";
+import { button, h, icon, toggle } from "./dom.js";
 import { buildView } from "./filter.js";
 import { toDot } from "./dot.js";
 import { appearancePanel } from "./panels/appearance.js";
@@ -9,13 +9,14 @@ import { artifactPanel, optionsPanel, presetPanel, relationPanel } from "./panel
 import { hiddenPanel } from "./panels/hidden.js";
 import { modulePanel } from "./panels/modules.js";
 import { clearAppearance, defaultAppearance, loadAppearance, saveAppearance } from "./appearance.js";
-import { markSelected, renderInto, resetView } from "./render.js";
+import { markSelected, renderInto, resetView, setDiagramLocked } from "./render.js";
 import { attachSidebarResize } from "./sidebar.js";
 import { defaultState, onHashNavigation, readHash, reconcile, Store } from "./state.js";
 
 const sidebar = document.getElementById("panels");
 const crateName = document.getElementById("crate-name");
 const toolbar = document.getElementById("toolbar");
+const canvasTools = document.getElementById("canvas-tools");
 const viewport = document.getElementById("viewport");
 const statusLine = document.getElementById("status");
 
@@ -36,6 +37,20 @@ let graph = { crate: "", root: "", scope: [], nodes: [], edges: [] };
 let selected = null;
 /** Modules folded shut in the sidebar tree — display-only, never shared. */
 const foldedModules = new Set();
+/** What the module tree is being searched for — display-only, like the folds. */
+let moduleSearch = "";
+/**
+ * Whether the panels and the toolbar are out of the way, and whether the
+ * diagram is pinned where it was left.
+ *
+ * Both are display-only, like the folds and the sidebar's width: they say
+ * nothing about which artifacts are drawn, so neither goes in the link. They
+ * are not standing preferences either — a reader who cleared the chrome to
+ * look at one diagram should not find it gone the next time the page opens —
+ * so unlike the width they are not written to storage either.
+ */
+let chromeHidden = false;
+let diagramLocked = false;
 let lastDot = "";
 let pending = false;
 /** Set when the loaded view mentioned things this crate does not have. */
@@ -152,6 +167,64 @@ function renderToolbar() {
   );
 }
 
+/**
+ * The switches draw their own state: a shut padlock is locked, an open one is
+ * not, and the arrows point at the corners they are about to fill or leave.
+ * `SHACKLE_*` is the only difference between the two locks — the same body,
+ * with the hook either back in it or swung clear.
+ */
+const LOCK_BODY = "M6 10h12a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2z";
+const SHACKLE_SHUT = "M8 10V6.5a4 4 0 0 1 8 0V10";
+const SHACKLE_OPEN = "M8 10V6.5a4 4 0 0 1 7.6-1.4";
+const ARROWS_OUT = ["M15 3h6v6", "M14 10l7-7", "M9 21H3v-6", "M10 14l-7 7"];
+const ARROWS_IN = ["M20 10h-6V4", "M14 10l7-7", "M4 14h6v6", "M10 14l-7 7"];
+
+/**
+ * The two switches that float over the diagram.
+ *
+ * They live over the canvas rather than in the toolbar because one of them
+ * hides the toolbar: a control that removes the surface it is standing on has
+ * to stand somewhere else. The status line stays visible in both modes — it is
+ * where a view with nothing in it says why.
+ */
+function renderCanvasTools() {
+  canvasTools.replaceChildren(
+    toggle(
+      icon(LOCK_BODY, diagramLocked ? SHACKLE_SHUT : SHACKLE_OPEN),
+      diagramLocked,
+      () => {
+        diagramLocked = !diagramLocked;
+        setDiagramLocked(diagramLocked);
+        applyChrome();
+      },
+      diagramLocked
+        ? "unlock the diagram: the wheel zooms and a drag pans again"
+        : "lock the diagram where it is: the wheel and a drag stop moving it",
+    ),
+    toggle(
+      icon(...(chromeHidden ? ARROWS_IN : ARROWS_OUT)),
+      chromeHidden,
+      () => setChromeHidden(!chromeHidden),
+      chromeHidden
+        ? "bring the panels and the toolbar back (or press Escape)"
+        : "full screen: hide the panels and the toolbar, leaving the diagram",
+    ),
+  );
+}
+
+/** The stylesheet does the hiding and the cursor; this says which mode is on. */
+function applyChrome() {
+  document.body.classList.toggle("chrome-hidden", chromeHidden);
+  document.body.classList.toggle("diagram-locked", diagramLocked);
+  renderCanvasTools();
+}
+
+/** @param {boolean} hidden */
+function setChromeHidden(hidden) {
+  chromeHidden = hidden;
+  applyChrome();
+}
+
 function renderSidebar() {
   const active = /** @type {HTMLInputElement|null} */ (document.activeElement);
   const activeId = active?.id ?? null;
@@ -159,10 +232,20 @@ function renderSidebar() {
 
   sidebar.replaceChildren(
     detailsPanel(store, graph, selected),
-    modulePanel(store, graph, foldedModules, (module) => {
-      if (foldedModules.has(module)) foldedModules.delete(module);
-      else foldedModules.add(module);
-      renderSidebar();
+    modulePanel(store, graph, {
+      folded: foldedModules,
+      search: moduleSearch,
+      onToggleFold: (module) => {
+        if (foldedModules.has(module)) foldedModules.delete(module);
+        else foldedModules.add(module);
+        renderSidebar();
+      },
+      // Narrowing the list changes nothing about what is drawn, so the
+      // diagram is left alone.
+      onSearch: (query) => {
+        moduleSearch = query;
+        renderSidebar();
+      },
     }),
     presetPanel(store),
     relationPanel(store, graph, appearance),
@@ -284,6 +367,12 @@ async function main() {
   onHashNavigation((state) => store.update(state));
 
   attachSidebarResize(document.getElementById("sidebar-resize"));
+  // The way out of a page with no visible chrome, for anyone who took the
+  // switch for a one-way door.
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && chromeHidden) setChromeHidden(false);
+  });
+  applyChrome();
   renderToolbar();
   renderSidebar();
   await draw();
