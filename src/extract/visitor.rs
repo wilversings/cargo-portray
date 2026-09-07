@@ -132,8 +132,69 @@ pub fn is_test_mod(i: &ItemMod) -> bool {
         return true;
     }
     i.attrs.iter().any(|attr| {
-        attr.path().is_ident("cfg") && attr.to_token_stream().to_string().contains("test")
+        attr.path().is_ident("cfg")
+            && attr
+                .parse_args::<syn::Meta>()
+                .is_ok_and(|predicate| off_without_test(&predicate))
     })
+}
+
+/// Whether a `cfg` predicate is false in a build that does not set `test` —
+/// that is, whether what it guards exists *only* when testing.
+///
+/// The question has to be asked of the predicate rather than of its text.
+/// Searching the rendered attribute for `test` reads `cfg(feature =
+/// "test-util")` as test code and throws away a real module, and reads
+/// `cfg(not(test))` — which is how `std` marks the code that exists
+/// everywhere *except* under test — as the exact opposite of what it says.
+///
+/// Anything that is not `test` is unknown here, so this only ever answers
+/// "certainly absent"; `cfg(any(test, unix))` is present on unix and stays.
+fn off_without_test(predicate: &syn::Meta) -> bool {
+    match predicate {
+        syn::Meta::Path(path) => path.is_ident("test"),
+        syn::Meta::List(list) if list.path.is_ident("all") => {
+            operands(list).iter().any(off_without_test)
+        }
+        syn::Meta::List(list) if list.path.is_ident("any") => {
+            let operands = operands(list);
+            !operands.is_empty() && operands.iter().all(off_without_test)
+        }
+        syn::Meta::List(list) if list.path.is_ident("not") => {
+            operands(list).iter().any(on_without_test)
+        }
+        _ => false,
+    }
+}
+
+/// The dual of [`off_without_test`]: whether a predicate certainly *holds*
+/// without `test` set. Only `not(test)` and combinations built on it can be
+/// known, which is the whole reason this exists — it is what stops a `not`
+/// from being read as the thing it negates.
+fn on_without_test(predicate: &syn::Meta) -> bool {
+    match predicate {
+        syn::Meta::List(list) if list.path.is_ident("all") => {
+            let operands = operands(list);
+            !operands.is_empty() && operands.iter().all(on_without_test)
+        }
+        syn::Meta::List(list) if list.path.is_ident("any") => {
+            operands(list).iter().any(on_without_test)
+        }
+        syn::Meta::List(list) if list.path.is_ident("not") => {
+            operands(list).iter().any(off_without_test)
+        }
+        _ => false,
+    }
+}
+
+/// The predicates inside `all(..)`, `any(..)` or `not(..)`. A predicate this
+/// cannot parse is no predicate at all, which leaves the item in the graph —
+/// the safe direction, since the cost of guessing wrong is a module silently
+/// missing from the diagram.
+fn operands(list: &syn::MetaList) -> Vec<syn::Meta> {
+    list.parse_args_with(syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated)
+        .map(|operands| operands.into_iter().collect())
+        .unwrap_or_default()
 }
 
 /// Innermost path segment of a type, used to name the `Self` type of an

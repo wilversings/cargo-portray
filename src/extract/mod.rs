@@ -969,6 +969,62 @@ mod tests {
     }
 
     #[test]
+    fn a_cfg_that_only_holds_under_test_is_skipped() {
+        let g = graph(&[(
+            "",
+            r#"
+            #[cfg(all(test, not(loom)))]
+            mod harness {
+                pub struct Rig;
+            }
+            "#,
+        )]);
+        assert!(g.nodes.iter().all(|n| n.name != "Rig"));
+    }
+
+    #[test]
+    fn a_feature_merely_named_after_testing_is_ordinary_code() {
+        let g = graph(&[(
+            "",
+            r#"
+            #[cfg(feature = "test-util")]
+            mod util {
+                pub struct Clock;
+            }
+            "#,
+        )]);
+        assert!(g.nodes.iter().any(|n| n.name == "Clock"));
+    }
+
+    #[test]
+    fn a_module_compiled_everywhere_but_under_test_is_kept() {
+        let g = graph(&[(
+            "",
+            r#"
+            #[cfg(not(test))]
+            mod real {
+                pub struct Live;
+            }
+            "#,
+        )]);
+        assert!(g.nodes.iter().any(|n| n.name == "Live"));
+    }
+
+    #[test]
+    fn a_module_that_survives_without_test_is_kept() {
+        let g = graph(&[(
+            "",
+            r#"
+            #[cfg(any(test, unix))]
+            mod either {
+                pub struct Both;
+            }
+            "#,
+        )]);
+        assert!(g.nodes.iter().any(|n| n.name == "Both"));
+    }
+
+    #[test]
     fn a_call_is_an_edge_from_the_function_that_makes_it() {
         let g = graph(&[(
             "",
