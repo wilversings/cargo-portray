@@ -78,20 +78,22 @@ export function modulePanel(store, graph, folded, onToggleFold) {
         h(
           "span",
           { class: "indent" },
+          // Same width as a guide column and flush against it, so this row's
+          // own caret lands exactly where a child's guide line will run.
           ...Array.from({ length: depth }, () => h("span", { class: "guide" })),
+          branches
+            ? h(
+                "button",
+                {
+                  type: "button",
+                  class: "twisty",
+                  onclick: () => onToggleFold(module),
+                  title: isFolded ? "expand this module's rows" : "collapse this module's rows",
+                },
+                isFolded ? "▸" : "▾",
+              )
+            : h("span", { class: "twisty" }),
         ),
-        branches
-          ? h(
-              "button",
-              {
-                type: "button",
-                class: "twisty",
-                onclick: () => onToggleFold(module),
-                title: isFolded ? "expand this module's rows" : "collapse this module's rows",
-              },
-              isFolded ? "▸" : "▾",
-            )
-          : h("span", { class: "twisty" }),
         box,
         h("span", { class: "module-name", title: module || "crate root" }, name),
         h("span", { class: "module-count" }, String(nodeCount(graph, module))),

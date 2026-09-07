@@ -379,12 +379,23 @@ button:hover {
   flex: none;
 }
 
+/*
+ * Same width as .twisty and centered the same way, so a guide line sits
+ * exactly under the caret of the ancestor that owns that column.
+ */
 .module-row .guide {
   flex: none;
-  width: 12px;
+  width: 14px;
   align-self: stretch;
-  border-left: 1px solid var(--line);
-  margin-left: 5px;
+  display: flex;
+  justify-content: center;
+}
+
+.module-row .guide::before {
+  content: "";
+  width: 1px;
+  align-self: stretch;
+  background: var(--line);
 }
 
 .module-row .twisty {
