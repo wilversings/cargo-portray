@@ -117,7 +117,9 @@ storage, deliberately outside the shareable link — a colour scheme is a
 standing preference, not part of the view you are sharing.
 
 The current view *is* in the URL, so a diagram is a link you can paste, and
-the back button undoes a filter change. A link outlives the crate it was
+the back button undoes a filter change. The hash reads as what it does —
+`#kinds=struct,enum&rels=field,impls&depth=2` — so a link can be skimmed, and
+edited by hand when that is quicker than clicking. A link outlives the crate it was
 written for — the server always defaults to the same port, so a view saved
 against one project will happily reopen against another — so on load anything
 it names that this crate does not have is dropped, and the status line says

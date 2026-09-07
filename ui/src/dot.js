@@ -233,21 +233,15 @@ function renderModule(tree, path, showMembers, look, depth, counter) {
 
 /**
  * @param {import("./filter.js").ViewEdge} edge
- * @param {number} index its position in the view, and its handle in the SVG
  * @param {Set<string>} portsDrawn
  * @param {import("./appearance.js").Appearance} look
  * @param {string} indent
  */
-function renderEdge(edge, index, portsDrawn, look, indent) {
+function renderEdge(edge, portsDrawn, look, indent) {
   const relLook = look.edges[edge.rel] ?? { color: "#333333", arrowhead: "normal" };
   const style = look.viaStyles[edge.via] ?? "solid";
   const color = edgeColor(look, edge);
-  // Graphviz writes an edge's `<title>` as `tail->head` — but it drops the
-  // port and keeps the compass point, and a Rust id is full of colons, so
-  // that string cannot be parsed back into two node ids. An explicit `id`
-  // comes through untouched, and `render.js` joins on the position instead.
   const attrs = [
-    `id="edge_${index}"`,
     `color="${color}"`,
     `style=${style}`,
     `arrowhead=${relLook.arrowhead}`,
@@ -306,9 +300,9 @@ export function toDot(view, state, look) {
   out += renderModule(root, [], state.showMembers, look, 0, { value: 0 });
 
   out += "\n";
-  view.edges.forEach((edge, index) => {
-    out += renderEdge(edge, index, portsDrawn, look, "  ");
-  });
+  for (const edge of view.edges) {
+    out += renderEdge(edge, portsDrawn, look, "  ");
+  }
   out += "}\n";
   return out;
 }

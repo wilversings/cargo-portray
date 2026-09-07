@@ -212,19 +212,14 @@ async function draw() {
     }
 
     statusLine.textContent = `laying out ${view.nodes.length} artifacts…`;
-    const { elapsedMs } = await renderInto(
-      viewport,
-      lastDot,
-      { selected, edges: view.edges, trace: appearance.hoverTrace },
-      {
-        onSelect: (id) => {
-          selected = id;
-          renderSidebar();
-          highlight(id);
-        },
-        onActivate: (id) => store.update({ focus: id, solo: null }),
+    const { elapsedMs } = await renderInto(viewport, lastDot, selected, {
+      onSelect: (id) => {
+        selected = id;
+        renderSidebar();
+        highlight(id);
       },
-    );
+      onActivate: (id) => store.update({ focus: id, solo: null }),
+    });
 
     const edgeNote =
       view.edges.length === 0

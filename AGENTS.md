@@ -170,28 +170,18 @@ the page and look at it — see *Checking the viewer* below.
   a comment full of angle brackets, and there is no escaping to get wrong. Its
   inline pattern is built per call — one shared `/g` regex, recursed into by a
   link label, resets `lastIndex` under the outer walk and loops forever.
-- **A crowded channel is read by dimming, not by re-laying out.** `dot` routes
-  every edge that crosses a rank boundary through the same corridor, so a
-  dense view arrives as a bundle of parallel lines that are individually
-  correct and collectively unreadable. `bindTrace` in `ui/src/render.js`
-  answers that without touching the layout: hovering a node lights it, its
-  edges and their far ends; hovering a line lights just that line and the two
-  things it joins; one class on the `<svg>` dims the rest, so the cost of a
-  hover does not grow with the drawing. The wide transparent copy of each
-  edge is what makes a hairline hittable, and "one colour per edge" in the
-  appearance panel is the same problem answered with hue. None of it removes
-  anything from the view.
-- **Edges are joined to the SVG by position, not by name.** Graphviz writes an
-  edge's `<title>` as `tail->head` with the port dropped and the compass point
-  kept, and a Rust node id is full of colons — that string cannot be split
-  back into two ids. So `dot.js` stamps `id="edge_<i>"` on every edge, `i`
-  being its index in `view.edges`, and `render.js` looks the endpoints up in
-  the same array. Reorder the edges between the two and the highlighting joins
-  the wrong things.
 - **Filter state lives in the URL hash; appearance lives in localStorage.** A
   view is something you share, so it belongs in the link — and only what
   differs from the defaults goes in, so a plain view has a plain link. A colour
   scheme is a standing preference, so it does not. Do not move either.
+- **The hash is `key=value&key=value`, written to be read.** A link is quoted
+  in prose and edited by hand, so `#kinds=struct,enum&depth=2` beats encoded
+  JSON: lists are comma-separated, flags are `true`/`false` (a bare key is on),
+  and `encodePart` in `ui/src/state.js` escapes only what would break that
+  shape, leaving the colons in a module path alone. Anything the grammar does
+  not know — an unknown key, a kind that is not a kind, a `depth` that is not a
+  number — is dropped rather than believed, and links written before this
+  format still open through `parseLegacy`.
 - **A link outlives the crate it was written for.** The server always defaults
   to the same port, so a view saved against one project will be reoffered
   against another. `reconcile` in `ui/src/state.js` drops anything the loaded
@@ -287,7 +277,7 @@ obvious in a picture.
 | New call shape | a `visit_expr_*` hook in `src/extract/visitor.rs` feeding `Callee`, and a resolution rule in `src/extract/calls.rs` |
 | New preset | `presetPanel` in `ui/src/panels/filters.js`, setting kinds and rels together |
 | New markdown syntax | a block rule in `renderMarkdown` or an arm in `inline`, both in `ui/src/markdown.js`, plus a style under `.prose` in `style.css` |
-| New filter | a field on `FilterState` in `ui/src/state.js` (defaults included, so the URL stays short), the rule in `ui/src/filter.js`, a control in `ui/src/panels/` |
+| New filter | a field on `FilterState` in `ui/src/state.js` (defaults included, so the URL stays short; list- and flag-valued fields go in `LIST_KEYS` or `FLAG_KEYS` so the hash round-trips), the rule in `ui/src/filter.js`, a control in `ui/src/panels/` |
 | New panel | `ui/src/panels/<name>.js`, mounted in `renderSidebar` in `ui/src/main.js` |
 | New subcommand | a variant in `src/main.rs` plus its own module (and a `--module` scope, like the others) |
 

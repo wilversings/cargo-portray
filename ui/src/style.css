@@ -663,30 +663,3 @@ input.color {
 #viewport svg {
   cursor: grab;
 }
-
-/* ------------------------------------------------------------ hover trace */
-
-/* The wide, invisible copy of each edge that `render.js` lays under the real
-   one: `stroke` is a hairline to look at and a hairline to hit, and `stroke`
-   pointer events do not care whether the paint can be seen. */
-#viewport svg g.edge path.hit {
-  pointer-events: stroke;
-  fill: none;
-}
-
-/* Dimming is one class on the root, so a hover costs a repaint and not a walk
-   over every group in the drawing. The clusters stay legible: they are the
-   background the traced edge is being read against. */
-#viewport svg.tracing g.node,
-#viewport svg.tracing g.edge {
-  opacity: 0.1;
-}
-
-#viewport svg.tracing g.cluster {
-  opacity: 0.45;
-}
-
-#viewport svg.tracing g.node.traced,
-#viewport svg.tracing g.edge.traced {
-  opacity: 1;
-}

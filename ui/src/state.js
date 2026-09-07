@@ -115,31 +115,115 @@ function diffFromDefaults(state) {
 
 let suppressHashRead = false;
 
+/**
+ * The hash is written to be read: `#kinds=struct,enum&depth=2` says what the
+ * view is without decoding anything. Lists are comma-separated, flags are
+ * `true`/`false`, and only the characters that would break the
+ * `key=value&key=value` shape are percent-escaped — so a module path keeps its
+ * colons and a link stays quotable in prose.
+ */
+const LIST_KEYS = ["kinds", "rels", "vias", "hiddenModules", "collapsedModules", "hidden"];
+const FLAG_KEYS = ["ambiguous", "showMembers", "showOrphans"];
+const NUMBER_KEYS = ["depth"];
+const DIRECTIONS = ["out", "in", "both"];
+const RANKDIRS = ["LR", "TB"];
+const FLAG_OFF = ["false", "0", "no", "off"];
+
+/**
+ * Escapes only what the hash grammar needs, so `crate::net::Socket` survives
+ * as itself. A list entry keeps its comma escaped, since that is the separator.
+ * @param {string} text
+ * @param {boolean} isEntry
+ */
+function encodePart(text, isEntry) {
+  const encoded = encodeURIComponent(text).replace(/%3A/g, ":").replace(/%2F/g, "/");
+  return isEntry ? encoded : encoded.replace(/%2C/g, ",");
+}
+
+/** @param {unknown} value */
+function encodeValue(value) {
+  if (Array.isArray(value)) return value.map((entry) => encodePart(String(entry), true)).join(",");
+  if (typeof value === "boolean") return value ? "true" : "false";
+  if (typeof value === "number") return String(value);
+  if (value === null || value === undefined) return "";
+  return encodePart(String(value), false);
+}
+
+/**
+ * @param {string} key
+ * @param {string} raw
+ * @param {FilterState} base
+ */
+function decodeValue(key, raw, base) {
+  if (LIST_KEYS.includes(key)) {
+    return raw === "" ? [] : raw.split(",").map((entry) => decodeURIComponent(entry));
+  }
+  // A bare `&showOrphans` reads as switching it on, which is what writing one
+  // by hand means.
+  if (FLAG_KEYS.includes(key)) return !FLAG_OFF.includes(raw.toLowerCase());
+  if (NUMBER_KEYS.includes(key)) {
+    const number = Number(raw);
+    return Number.isFinite(number) ? number : undefined;
+  }
+  const text = decodeURIComponent(raw);
+  return text === "" && base[key] === null ? null : text;
+}
+
 /** @param {FilterState} state */
 export function writeHash(state) {
   const diff = diffFromDefaults(state);
-  const hash =
-    Object.keys(diff).length === 0 ? "" : "#" + encodeURIComponent(JSON.stringify(diff));
+  const pairs = Object.entries(diff).map(([key, value]) => `${key}=${encodeValue(value)}`);
+  const hash = pairs.length === 0 ? "" : "#" + pairs.join("&");
   if (hash === window.location.hash) return;
   suppressHashRead = true;
   window.history.pushState(null, "", hash || window.location.pathname);
   suppressHashRead = false;
 }
 
+/**
+ * Links written before the hash was readable carry the whole view as encoded
+ * JSON. They still open.
+ * @param {string} raw
+ */
+function parseLegacy(raw) {
+  return JSON.parse(decodeURIComponent(raw));
+}
+
+/**
+ * @param {string} raw
+ * @param {FilterState} base
+ */
+function parsePairs(raw, base) {
+  /** @type {Record<string, unknown>} */
+  const out = {};
+  for (const pair of raw.split("&")) {
+    if (!pair) continue;
+    const split = pair.indexOf("=");
+    const key = split === -1 ? pair : pair.slice(0, split);
+    if (!(key in base)) continue;
+    const value = decodeValue(key, split === -1 ? "" : pair.slice(split + 1), base);
+    if (value !== undefined) out[key] = value;
+  }
+  return out;
+}
+
 /** @returns {FilterState} */
 export function readHash() {
-  const state = defaultState();
+  const base = defaultState();
   const raw = window.location.hash.replace(/^#/, "");
-  if (!raw) return state;
+  if (!raw) return base;
   try {
-    const merged = { ...state, ...JSON.parse(decodeURIComponent(raw)) };
+    const legacy = raw.startsWith("{") || raw.startsWith("%7B");
+    const merged = { ...base, ...(legacy ? parseLegacy(raw) : parsePairs(raw, base)) };
     // A hand-edited link should not be able to smuggle in unknown values.
     merged.kinds = merged.kinds.filter((kind) => NODE_KINDS.includes(kind));
     merged.rels = merged.rels.filter((rel) => RELS.includes(rel));
     merged.vias = merged.vias.filter((via) => VIAS.includes(via));
+    if (!DIRECTIONS.includes(merged.direction)) merged.direction = base.direction;
+    if (!RANKDIRS.includes(merged.rankdir)) merged.rankdir = base.rankdir;
     return merged;
   } catch {
-    return state;
+    return base;
   }
 }
 

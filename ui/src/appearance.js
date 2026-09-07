@@ -14,8 +14,7 @@ const STORAGE_KEY = "portray.appearance.v1";
  * @typedef {{ nodeColors: Record<string, string>,
  *   edges: Record<string, EdgeLook>,
  *   viaStyles: Record<string, string>,
- *   edgeColors: EdgeColorMode,
- *   hoverTrace: boolean }} Appearance
+ *   edgeColors: EdgeColorMode }} Appearance
  */
 
 /** @returns {Appearance} */
@@ -48,7 +47,6 @@ export function defaultAppearance() {
       dyn: "dotted",
     },
     edgeColors: "relation",
-    hoverTrace: true,
   };
 }
 
@@ -67,7 +65,6 @@ export function loadAppearance() {
       edges: { ...base.edges, ...(saved.edges ?? {}) },
       viaStyles: { ...base.viaStyles, ...(saved.viaStyles ?? {}) },
       edgeColors: saved.edgeColors === "random" ? "random" : base.edgeColors,
-      hoverTrace: saved.hoverTrace ?? base.hoverTrace,
     };
   } catch {
     return base;

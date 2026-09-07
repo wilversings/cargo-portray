@@ -6,12 +6,12 @@
 // "implements, as a template argument" without either axis overwriting the
 // other.
 //
-// The two controls that are not colours are here for the same reason a colour
-// is: giving every edge its own colour, and dimming everything the pointer is
-// not on, both answer "which line is which" in a crowded drawing without
-// changing which artifacts are in it.
+// Giving every edge its own colour instead is the one setting that says
+// nothing about the model: it is there for the crowded case, where a dozen
+// edges run down the same channel and the only question is which line is
+// which.
 
-import { button, checkbox, colorInput, h, section, select } from "../dom.js";
+import { button, colorInput, h, section, select } from "../dom.js";
 import { ARROWHEADS, COLOURABLE_KINDS, LINE_STYLES } from "../appearance.js";
 import { KIND_LABELS, REL_LABELS, RELS, VIA_LABELS, VIAS } from "../model.js";
 
@@ -93,10 +93,6 @@ export function appearancePanel(look, onChange, onReset) {
       ),
     h("h3", {}, "line style, by how the type was reached"),
     ...viaRows,
-    h("h3", {}, "under the pointer"),
-    checkbox("dim everything but what is hovered", look.hoverTrace, (checked) =>
-      onChange({ hoverTrace: checked }),
-    ),
     h("div", { class: "row-actions" }, button("reset to defaults", onReset)),
     h("p", { class: "hint" }, "Kept in this browser, not in the shareable link."),
   );
