@@ -63,20 +63,39 @@ export function attachPanZoom(svg) {
     { passive: false },
   );
 
+  /**
+   * A press is not a drag yet.
+   *
+   * The pan used to capture the pointer the moment a button went down, and a
+   * captured pointer sends its `pointerup` — and the `click` built out of it —
+   * to whatever holds the capture. Every click in the diagram was therefore
+   * delivered to the `<svg>` itself: nothing a node or a documentation marker
+   * listened for ever reached it. So the press is only remembered here, and
+   * the capture waits until the pointer has actually travelled far enough to
+   * mean a drag; a click that stays put is left alone to land where it fell.
+   */
+  const DRAG_SLOP = 3;
+
+  /** @type {{ user: { x: number, y: number }, x: number, y: number, id: number }|null} */
+  let press = null;
   /** @type {{ x: number, y: number }|null} */
   let dragging = null;
 
   svg.addEventListener("pointerdown", (event) => {
     if (event.button !== 0) return;
     // Without this the browser starts a text selection and the drag paints
-    // every label it passes over blue.
+    // every label it passes over blue. It does not stop the click.
     event.preventDefault();
-    dragging = toUser(event);
-    svg.setPointerCapture(event.pointerId);
-    svg.style.cursor = "grabbing";
+    press = { user: toUser(event), x: event.clientX, y: event.clientY, id: event.pointerId };
   });
 
   svg.addEventListener("pointermove", (event) => {
+    if (press && !dragging) {
+      if (Math.hypot(event.clientX - press.x, event.clientY - press.y) < DRAG_SLOP) return;
+      dragging = press.user;
+      svg.setPointerCapture(press.id);
+      svg.style.cursor = "grabbing";
+    }
     if (!dragging) return;
     const factor = scale();
     const box = svg.getBoundingClientRect();
@@ -90,6 +109,7 @@ export function attachPanZoom(svg) {
   });
 
   function endDrag(/** @type {PointerEvent} */ event) {
+    press = null;
     if (!dragging) return;
     dragging = null;
     svg.releasePointerCapture?.(event.pointerId);

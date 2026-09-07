@@ -19,7 +19,6 @@ import { moduleTree, NODE_KINDS, RELS, VIAS } from "./model.js";
  *   hidden: string[],
  *   hidePattern: string,
  *   showMembers: boolean,
- *   showDocs: boolean,
  *   showOrphans: boolean,
  *   rankdir: "LR"|"TB",
  * }} FilterState
@@ -45,7 +44,6 @@ export function defaultState() {
     hidden: [],
     hidePattern: "",
     showMembers: true,
-    showDocs: true,
     showOrphans: false,
     rankdir: "LR",
   };

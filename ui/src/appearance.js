@@ -10,9 +10,12 @@ const STORAGE_KEY = "portray.appearance.v1";
 
 /**
  * @typedef {{ color: string, arrowhead: string }} EdgeLook
+ * @typedef {"relation"|"random"} EdgeColorMode
  * @typedef {{ nodeColors: Record<string, string>,
  *   edges: Record<string, EdgeLook>,
- *   viaStyles: Record<string, string> }} Appearance
+ *   viaStyles: Record<string, string>,
+ *   edgeColors: EdgeColorMode,
+ *   hoverTrace: boolean }} Appearance
  */
 
 /** @returns {Appearance} */
@@ -44,6 +47,8 @@ export function defaultAppearance() {
       generic: "dashed",
       dyn: "dotted",
     },
+    edgeColors: "relation",
+    hoverTrace: true,
   };
 }
 
@@ -61,6 +66,8 @@ export function loadAppearance() {
       nodeColors: { ...base.nodeColors, ...(saved.nodeColors ?? {}) },
       edges: { ...base.edges, ...(saved.edges ?? {}) },
       viaStyles: { ...base.viaStyles, ...(saved.viaStyles ?? {}) },
+      edgeColors: saved.edgeColors === "random" ? "random" : base.edgeColors,
+      hoverTrace: saved.hoverTrace ?? base.hoverTrace,
     };
   } catch {
     return base;
@@ -99,6 +106,72 @@ export function lighten(hex, amount) {
   const g = mix((value >> 8) & 0xff);
   const b = mix(value & 0xff);
   return "#" + [r, g, b].map((c) => c.toString(16).padStart(2, "0")).join("");
+}
+
+/**
+ * 32-bit FNV-1a. Small, and — unlike `Math.random` — the same key gives the
+ * same colour on every redraw, so a line does not change colour when a
+ * filter moves and the diagram is laid out again.
+ * @param {string} key
+ */
+function hashOf(key) {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < key.length; i++) {
+    hash ^= key.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return hash >>> 0;
+}
+
+/** @param {number} hue @param {number} sat @param {number} light 0-100 */
+function hslToHex(hue, sat, light) {
+  const s = sat / 100;
+  const l = light / 100;
+  const chroma = (1 - Math.abs(2 * l - 1)) * s;
+  const sector = hue / 60;
+  const second = chroma * (1 - Math.abs((sector % 2) - 1));
+  const base = [
+    [chroma, second, 0],
+    [second, chroma, 0],
+    [0, chroma, second],
+    [0, second, chroma],
+    [second, 0, chroma],
+    [chroma, 0, second],
+  ][Math.floor(sector) % 6];
+  const offset = l - chroma / 2;
+  return (
+    "#" +
+    base
+      .map((channel) =>
+        Math.round((channel + offset) * 255)
+          .toString(16)
+          .padStart(2, "0"),
+      )
+      .join("")
+  );
+}
+
+/**
+ * The colour one edge is drawn in.
+ *
+ * `relation` is the meaningful scheme: the colour says what the dependency
+ * *is*. `random` gives every edge its own colour instead, which says nothing
+ * — it is there for the crowded case, where a dozen edges run down the same
+ * channel between two clusters and the only question is which line is which.
+ * Arrowheads still carry the relation and line styles still carry the via,
+ * so nothing is actually lost.
+ *
+ * @param {Appearance} look
+ * @param {import("./filter.js").ViewEdge} edge
+ */
+export function edgeColor(look, edge) {
+  const relColor = look.edges[edge.rel]?.color ?? "#333333";
+  if (look.edgeColors !== "random") return relColor;
+  const key = [edge.from, edge.fromPort ?? "", edge.to, edge.rel].join("\u0000");
+  const hash = hashOf(key);
+  // Kept dark and saturated: these are hairlines on white, and a pale one is
+  // not a line the reader can follow.
+  return hslToHex(hash % 360, 58 + ((hash >>> 9) % 30), 31 + ((hash >>> 17) % 14));
 }
 
 /** Names of everything that can be recoloured, for building the panel. */

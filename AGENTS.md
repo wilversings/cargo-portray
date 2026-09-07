@@ -150,21 +150,44 @@ the page and look at it — see *Checking the viewer* below.
   on top of the first. This is the single most-regressed thing in the project:
   if labels start spilling out of their boxes or the keyword runs into the type
   name, this is why.
-- **The documentation marker is drawn, not written.** `dot.js` puts a bare
-  letter in the cell and a `portray-doc:` / `portray-node:` href on it;
-  `render.js` rings it with an SVG circle once Graphviz has placed everything.
-  Not `\u24d8`: that character has no glyph in many system fonts and comes out
-  of the fallback as a squashed oval. The href is a fake scheme because an
-  `<a>` is the only thing Graphviz carries from a *table cell* through layout
-  into the SVG — nothing ever navigates to one, and the click handler cancels
-  the default. Whole-node markers use the second scheme because a plain node
-  has no cell to sit in, so the viewer places that one itself, in the width
-  `renderPlainNode` added for it.
+- **Documentation is read in the sidebar, never in the diagram.** The doc
+  comments reach the page in the model and `panels/details.js` renders the
+  selected artifact's, its documented fields under it. The diagram carried a
+  clickable marker per comment once — a lettered ring in the node, and a
+  window that opened over the drawing — and it cost a column in every table,
+  a fake `href` scheme through Graphviz, and a pass in `render.js` that
+  re-placed a glyph Graphviz had put down from guessed font metrics. All of it
+  told the reader something the panel beside it already said. Do not put it
+  back: what a node is worth drawing is its name, its members and its edges.
+- **The pan captures the pointer only once the pointer moves.** A captured
+  pointer delivers its `pointerup` — and the `click` synthesised from it — to
+  whoever holds the capture, so capturing on `pointerdown`, which `panzoom.js`
+  used to do, quietly ate every click in the diagram: selecting a node stopped
+  working. Capture belongs after the pointer has travelled `DRAG_SLOP`, which
+  is the point where a press is a drag and no longer a click.
 - **`markdown.js` renders into elements, never into HTML.** Doc comments are
   someone else's text: built as DOM nodes, a comment full of angle brackets is
   a comment full of angle brackets, and there is no escaping to get wrong. Its
   inline pattern is built per call — one shared `/g` regex, recursed into by a
   link label, resets `lastIndex` under the outer walk and loops forever.
+- **A crowded channel is read by dimming, not by re-laying out.** `dot` routes
+  every edge that crosses a rank boundary through the same corridor, so a
+  dense view arrives as a bundle of parallel lines that are individually
+  correct and collectively unreadable. `bindTrace` in `ui/src/render.js`
+  answers that without touching the layout: hovering a node lights it, its
+  edges and their far ends; hovering a line lights just that line and the two
+  things it joins; one class on the `<svg>` dims the rest, so the cost of a
+  hover does not grow with the drawing. The wide transparent copy of each
+  edge is what makes a hairline hittable, and "one colour per edge" in the
+  appearance panel is the same problem answered with hue. None of it removes
+  anything from the view.
+- **Edges are joined to the SVG by position, not by name.** Graphviz writes an
+  edge's `<title>` as `tail->head` with the port dropped and the compass point
+  kept, and a Rust node id is full of colons — that string cannot be split
+  back into two ids. So `dot.js` stamps `id="edge_<i>"` on every edge, `i`
+  being its index in `view.edges`, and `render.js` looks the endpoints up in
+  the same array. Reorder the edges between the two and the highlighting joins
+  the wrong things.
 - **Filter state lives in the URL hash; appearance lives in localStorage.** A
   view is something you share, so it belongs in the link — and only what
   differs from the defaults goes in, so a plain view has a plain link. A colour
@@ -188,7 +211,19 @@ the page and look at it — see *Checking the viewer* below.
 - **Panels are rebuilt, not mutated.** A panel function takes state and returns
   a fresh subtree. Build all of it — a `<details>` that fills itself in only
   when already open renders empty on the click that opens it, which is exactly
-  the bug `foldout` exists to prevent.
+  the bug `section` in `dom.js` is written to avoid.
+- **What is folded is not part of the view.** Every panel is a `<details>`, and
+  which ones are shut — like which module rows are shut, and how wide the
+  sidebar is — says nothing about what is drawn. None of it belongs in the URL:
+  panel folding lives in `dom.js`, module folding in a set `main.js` owns, and
+  the sidebar's width in localStorage beside the colours.
+- **The module tree's guide lines are computed, not decorative.** A guide
+  column is drawn only where the subtree it stands for has rows below the one
+  being drawn, and the row's own column turns into a tee or an elbow depending
+  on whether more siblings follow — that is what `guideColumns` in
+  `panels/modules.js` works out in one pass from the bottom. The rows carry no
+  vertical padding for the same reason: a line broken every twenty-four pixels
+  reads as a list of dashes, not as a tree.
 
 ### Serving and exporting
 

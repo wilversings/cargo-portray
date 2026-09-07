@@ -1,8 +1,7 @@
 // Laying the DOT out with Graphviz compiled to WebAssembly, and making the
-// resulting SVG clickable.
+// resulting SVG clickable — and, under the pointer, traceable.
 
 import { Graphviz } from "../vendor/graphviz.js";
-import { parseDocHref } from "./dot.js";
 import { attachPanZoom } from "./panzoom.js";
 
 /** @type {Promise<any>|null} */
@@ -16,22 +15,18 @@ function graphviz() {
 /** @type {{ fit(): void }|null} */
 let panZoom = null;
 
-/**
- * @typedef {{ onSelect(id: string): void, onActivate(id: string): void,
- *   onDocHover(target: DocTarget, event: MouseEvent): void,
- *   onDocPin(target: DocTarget, event: MouseEvent): void,
- *   onDocLeave(): void }} Hooks
- * @typedef {{ id: string, port: string|null }} DocTarget
- */
+/** @typedef {{ onSelect(id: string): void, onActivate(id: string): void }} Hooks */
 
 /**
  * @param {HTMLElement} container
  * @param {string} dot
- * @param {string|null} selected
+ * @param {{ selected: string|null,
+ *   edges: import("./filter.js").ViewEdge[],
+ *   trace: boolean }} options `edges` in the same order `dot.js` numbered them
  * @param {Hooks} hooks
  * @returns {Promise<{ svg: string, elapsedMs: number }>}
  */
-export async function renderInto(container, dot, selected, hooks) {
+export async function renderInto(container, dot, options, hooks) {
   const engine = await graphviz();
   const started = performance.now();
   const svg = engine.layout(dot, "svg", "dot");
@@ -46,8 +41,8 @@ export async function renderInto(container, dot, selected, hooks) {
   element.setAttribute("height", "100%");
   element.removeAttribute("style");
 
-  bindNodes(element, selected, hooks);
-  bindDocMarkers(element, hooks);
+  bindNodes(element, options.selected, hooks);
+  if (options.trace) bindTrace(element, options.edges);
   panZoom = attachPanZoom(element);
 
   return { svg, elapsedMs };
@@ -81,123 +76,132 @@ function bindNodes(svg, selected, hooks) {
 }
 
 /**
- * The documentation markers.
+ * A second copy of the edge's line, transparent and thick, laid under it.
  *
- * `dot.js` hangs a `portray-doc:` href off each one, because a link is the
- * only thing Graphviz carries all the way from a table cell to the SVG. None
- * of them is a link in any real sense, so the default is cancelled and the
- * page opens the panel itself.
+ * An edge is a hairline: at the zoom where a crowded channel is worth
+ * tracing, hitting one with the pointer is luck. The copy is what the pointer
+ * actually hits — `pointer-events: stroke` in the stylesheet applies to it
+ * whether or not the paint is visible — and it carries no dash pattern, so
+ * there are no gaps in the target.
+ *
+ * @param {Element} edge
+ */
+function widenHitArea(edge) {
+  const line = edge.querySelector("path");
+  if (!line) return;
+  const hit = /** @type {Element} */ (line.cloneNode(false));
+  hit.setAttribute("class", "hit");
+  hit.setAttribute("stroke", "transparent");
+  hit.setAttribute("stroke-width", "9");
+  hit.removeAttribute("stroke-dasharray");
+  edge.insertBefore(hit, line);
+}
+
+/**
+ * Dim everything the pointer is not on.
+ *
+ * The clutter this answers is a bundle of edges sharing one channel between
+ * two clusters: the picture is right, and unreadable, because twenty lines
+ * that run together cannot be told apart by eye. Nothing is removed and
+ * nothing is laid out differently — hovering a node lights that node, its
+ * edges and their far ends, and hovering a line lights just that line and the
+ * two things it joins, which is what turns a bundle back into edges.
  *
  * @param {SVGElement} svg
- * @param {Hooks} hooks
+ * @param {import("./filter.js").ViewEdge[]} edges
  */
-function bindDocMarkers(svg, hooks) {
-  for (const anchor of svg.querySelectorAll("a")) {
-    const href =
-      anchor.getAttribute("xlink:href") ?? anchor.getAttribute("href") ?? "";
-    const target = parseDocHref(href);
-    if (!target) continue;
-
-    anchor.classList.add("doc-marker");
-    drawMarker(anchor, target.whole);
-    anchor.addEventListener("mouseenter", (event) => hooks.onDocHover(target, event));
-    anchor.addEventListener("mouseleave", () => hooks.onDocLeave());
-    anchor.addEventListener("click", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      hooks.onDocPin(target, event);
-    });
+function bindTrace(svg, edges) {
+  /** @type {Map<string, Element>} */
+  const nodes = new Map();
+  for (const group of svg.querySelectorAll("g.node")) {
+    const id = group.querySelector("title")?.textContent ?? "";
+    if (id) nodes.set(id, group);
   }
-}
 
-const SVG_NS = "http://www.w3.org/2000/svg";
+  /** Ends of the edge drawn by one SVG group. @type {Map<Element, string[]>} */
+  const ends = new Map();
+  /** Edges incident to one node. @type {Map<string, Element[]>} */
+  const touching = new Map();
+  edges.forEach((edge, index) => {
+    const element = svg.querySelector(`#edge_${index}`);
+    if (!element) return;
+    ends.set(element, [edge.from, edge.to]);
+    for (const id of [edge.from, edge.to]) {
+      if (!touching.has(id)) touching.set(id, []);
+      touching.get(id)?.push(element);
+    }
+    widenHitArea(element);
+  });
 
-/** Radius of the marker's ring, in the diagram's own units. */
-const RING = 5.2;
+  /** @type {Element[]} */
+  let lit = [];
+  const clear = () => {
+    if (lit.length === 0) return;
+    svg.classList.remove("tracing");
+    for (const element of lit) element.classList.remove("traced");
+    lit = [];
+  };
 
-/**
- * Rings the marker.
- *
- * The circle is drawn here rather than written into the label as `\u24d8`,
- * because that character is one many systems have no glyph for and render as
- * a squashed oval out of a fallback font. A circle and a letter are two shapes
- * this file controls, and they look the same everywhere.
- *
- * A table cell already holds the letter — Graphviz put it there — so it only
- * gains the ring. A plain node has no cell, so both are drawn, into the
- * top-right of the shape where `dot.js` widened it to leave room.
- *
- * @param {Element} anchor
- * @param {boolean} whole true for a whole-node marker
- */
-function drawMarker(anchor, whole) {
-  const shape = anchor.querySelector("ellipse, polygon");
-  const glyph = /** @type {SVGGraphicsElement|null} */ (anchor.querySelector("text"));
+  /** @param {Element[]} elements */
+  const light = (elements) => {
+    clear();
+    if (elements.length === 0) return;
+    for (const element of elements) element.classList.add("traced");
+    lit = elements;
+    // One class on the root does the dimming, so the cost of a hover does not
+    // grow with the size of the drawing.
+    svg.classList.add("tracing");
+  };
 
-  const centre = whole ? cornerOf(shape) : centreOf(glyph);
-  if (!centre) return;
+  /** @type {Element|null} */
+  let under = null;
 
-  const ring = document.createElementNS(SVG_NS, "circle");
-  ring.setAttribute("cx", centre.x.toFixed(2));
-  ring.setAttribute("cy", centre.y.toFixed(2));
-  ring.setAttribute("r", String(RING));
-  ring.setAttribute("class", "doc-ring");
-  anchor.append(ring);
+  // Delegated, because `mouseenter` does not bubble and a crowded diagram has
+  // thousands of groups to bind.
+  svg.addEventListener("mouseover", (event) => {
+    const target =
+      event.target instanceof Element ? event.target.closest("g.node, g.edge") : null;
+    if (target === under) return;
+    under = target;
 
-  if (!whole) {
-    // Graphviz pinned the letter to the width it guessed for it; freed of
-    // that, the browser draws it at its own width, inside the ring.
-    glyph?.removeAttribute("textLength");
-    glyph?.removeAttribute("lengthAdjust");
-    glyph?.classList.add("doc-glyph");
-    return;
-  }
-  const letter = document.createElementNS(SVG_NS, "text");
-  letter.setAttribute("x", centre.x.toFixed(2));
-  letter.setAttribute("y", centre.y.toFixed(2));
-  letter.setAttribute("class", "doc-letter");
-  letter.textContent = "i";
-  anchor.append(letter);
-}
+    if (!target) {
+      clear();
+      return;
+    }
 
-/** @param {Element|null} element */
-function centreOf(element) {
-  const box = boundsOf(element);
-  return box && { x: box.x + box.width / 2, y: box.y + box.height / 2 };
-}
-
-/**
- * The top right of a shape, *inside* it.
- *
- * The corner of an ellipse's bounding box is outside the ellipse, and the
- * middle of it is where the label already is, so the marker goes on the
- * diagonal between them — in the room `dot.js` added to the width for it.
- * @param {Element|null} shape
- */
-function cornerOf(shape) {
-  if (shape?.tagName === "ellipse") {
-    const at = (/** @type {string} */ name) => Number(shape.getAttribute(name) ?? 0);
-    // Halfway round to the corner, on an ellipse shrunk by the ring's own
-    // size, so the ring lands inside the outline however flat the node is.
-    const inset = RING * 1.6;
-    const diagonal = Math.SQRT1_2;
-    return {
-      x: at("cx") + Math.max(at("rx") - inset, 0) * diagonal,
-      y: at("cy") - Math.max(at("ry") - inset, 0) * diagonal,
+    /** @type {Element[]} */
+    const wanted = [target];
+    /** @param {string[]} ids */
+    const addNodes = (ids) => {
+      for (const id of ids) {
+        const node = nodes.get(id);
+        if (node) wanted.push(node);
+      }
     };
-  }
-  const box = boundsOf(shape);
-  return box && { x: box.x + box.width - RING * 1.7, y: box.y + RING * 1.7 };
+
+    if (target.classList.contains("edge")) {
+      addNodes(ends.get(target) ?? []);
+    } else {
+      const id = target.querySelector("title")?.textContent ?? "";
+      const seen = new Set([id]);
+      for (const element of touching.get(id) ?? []) {
+        wanted.push(element);
+        const far = (ends.get(element) ?? []).filter((end) => !seen.has(end));
+        for (const end of far) seen.add(end);
+        addNodes(far);
+      }
+    }
+    light(wanted);
+  });
+
+  svg.addEventListener("mouseleave", () => {
+    under = null;
+    clear();
+  });
 }
 
-/** @param {Element|null} element */
-function boundsOf(element) {
-  try {
-    return /** @type {SVGGraphicsElement} */ (element)?.getBBox() ?? null;
-  } catch {
-    return null; // never laid out, so there is nothing to place anything against
-  }
-}
+/** Must match `--accent`: the colour a selected node is outlined in. */
+const SELECT_STROKE = "#d1345b";
 
 /**
  * @param {Element} group
@@ -207,10 +211,16 @@ export function markSelected(group, on) {
   group.classList.toggle("selected", on);
   for (const shape of group.querySelectorAll("polygon, ellipse, path")) {
     if (on) {
-      shape.setAttribute("stroke", "#d1345b");
+      // What the shape was drawn with, kept so that deselecting puts it back.
+      // A table's cell backgrounds carry no stroke at all, and painting them
+      // black on the way out would rule lines the diagram never had.
+      if (!shape.hasAttribute("data-stroke")) {
+        shape.setAttribute("data-stroke", shape.getAttribute("stroke") ?? "none");
+      }
+      shape.setAttribute("stroke", SELECT_STROKE);
       shape.setAttribute("stroke-width", "2.5");
-    } else if (shape.getAttribute("stroke") === "#d1345b") {
-      shape.setAttribute("stroke", "#000000");
+    } else if (shape.getAttribute("stroke") === SELECT_STROKE) {
+      shape.setAttribute("stroke", shape.getAttribute("data-stroke") ?? "#000000");
       shape.removeAttribute("stroke-width");
     }
   }

@@ -9,8 +9,8 @@ import { artifactPanel, optionsPanel, presetPanel, relationPanel } from "./panel
 import { hiddenPanel } from "./panels/hidden.js";
 import { modulePanel } from "./panels/modules.js";
 import { clearAppearance, defaultAppearance, loadAppearance, saveAppearance } from "./appearance.js";
-import { hideDoc, hoverDoc, isPinned, pinDoc } from "./doctip.js";
 import { markSelected, renderInto, resetView } from "./render.js";
+import { attachSidebarResize } from "./sidebar.js";
 import { defaultState, onHashNavigation, readHash, reconcile, Store } from "./state.js";
 
 const sidebar = document.getElementById("panels");
@@ -200,8 +200,6 @@ function suffix() {
 async function draw() {
   if (pending) return;
   pending = true;
-  // The SVG the panel was opened over is about to be replaced.
-  hideDoc(true);
   try {
     const state = store.get();
     const view = buildView(graph, state);
@@ -214,23 +212,19 @@ async function draw() {
     }
 
     statusLine.textContent = `laying out ${view.nodes.length} artifacts…`;
-    const { elapsedMs } = await renderInto(viewport, lastDot, selected, {
-      onSelect: (id) => {
-        selected = id;
-        renderSidebar();
-        highlight(id);
+    const { elapsedMs } = await renderInto(
+      viewport,
+      lastDot,
+      { selected, edges: view.edges, trace: appearance.hoverTrace },
+      {
+        onSelect: (id) => {
+          selected = id;
+          renderSidebar();
+          highlight(id);
+        },
+        onActivate: (id) => store.update({ focus: id, solo: null }),
       },
-      onActivate: (id) => store.update({ focus: id, solo: null }),
-      onDocHover: (target, event) => {
-        const tip = docTip(target, event);
-        if (tip) hoverDoc(tip);
-      },
-      onDocPin: (target, event) => {
-        const tip = docTip(target, event);
-        if (tip) pinDoc(tip);
-      },
-      onDocLeave: () => hideDoc(),
-    });
+    );
 
     const edgeNote =
       view.edges.length === 0
@@ -244,37 +238,6 @@ async function draw() {
   } finally {
     pending = false;
   }
-}
-
-/**
- * What a documentation marker points at: the artifact itself, or the one
- * field or variant the marker sits beside.
- * @param {import("./render.js").DocTarget} target
- * @param {MouseEvent} event
- * @returns {import("./doctip.js").DocTip|null}
- */
-function docTip(target, event) {
-  const node = graph.nodes.find((candidate) => candidate.id === target.id);
-  if (!node) return null;
-  if (target.port) {
-    const member = node.members.find((candidate) => candidate.port === target.port);
-    if (!member?.docs) return null;
-    return {
-      title: member.label,
-      subtitle: `${node.name} in ${node.module || "the crate root"}`,
-      docs: member.docs,
-      x: event.clientX,
-      y: event.clientY,
-    };
-  }
-  if (!node.docs) return null;
-  return {
-    title: node.name,
-    subtitle: node.signature ?? `${node.kind} in ${node.module || "the crate root"}`,
-    docs: node.docs,
-    x: event.clientX,
-    y: event.clientY,
-  };
 }
 
 /** Outlines the clicked node without paying for a whole re-layout. */
@@ -325,15 +288,7 @@ async function main() {
   });
   onHashNavigation((state) => store.update(state));
 
-  // A pinned documentation panel is dismissed the way any panel over a page
-  // is: by pressing escape, or by clicking away from it.
-  document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") hideDoc(true);
-  });
-  document.addEventListener("mousedown", () => {
-    if (isPinned()) hideDoc(true);
-  });
-
+  attachSidebarResize(document.getElementById("sidebar-resize"));
   renderToolbar();
   renderSidebar();
   await draw();

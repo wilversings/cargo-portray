@@ -5,12 +5,15 @@
 // style. Keeping them separate is what lets a dashed orange line mean
 // "implements, as a template argument" without either axis overwriting the
 // other.
+//
+// The two controls that are not colours are here for the same reason a colour
+// is: giving every edge its own colour, and dimming everything the pointer is
+// not on, both answer "which line is which" in a crowded drawing without
+// changing which artifacts are in it.
 
-import { button, colorInput, foldout, h, select } from "../dom.js";
+import { button, checkbox, colorInput, h, section, select } from "../dom.js";
 import { ARROWHEADS, COLOURABLE_KINDS, LINE_STYLES } from "../appearance.js";
 import { KIND_LABELS, REL_LABELS, RELS, VIA_LABELS, VIAS } from "../model.js";
-
-let open = false;
 
 /**
  * @param {import("../appearance.js").Appearance} look
@@ -54,18 +57,46 @@ export function appearancePanel(look, onChange, onReset) {
     ),
   );
 
-  return foldout(
+  const modes = [
+    { value: "relation", label: "by what it is" },
+    { value: "random", label: "one per edge" },
+  ];
+
+  return section(
     "Appearance",
-    open,
-    (isOpen) => {
-      open = isOpen;
-    },
     h("h3", {}, "artifact colours"),
     ...kindRows,
     h("h3", {}, "edge colour and arrowhead"),
+    h(
+      "label",
+      { class: "field" },
+      h("span", {}, "colour"),
+      h(
+        "select",
+        { onchange: (event) => onChange({ edgeColors: event.target.value }) },
+        ...modes.map((mode) =>
+          h(
+            "option",
+            { value: mode.value, selected: look.edgeColors === mode.value },
+            mode.label,
+          ),
+        ),
+      ),
+    ),
     ...relRows,
+    look.edgeColors === "random" &&
+      h(
+        "p",
+        { class: "hint" },
+        "Every edge has its own colour, so the colours above are not in use — " +
+          "the arrowheads and line styles still say what each edge is.",
+      ),
     h("h3", {}, "line style, by how the type was reached"),
     ...viaRows,
+    h("h3", {}, "under the pointer"),
+    checkbox("dim everything but what is hovered", look.hoverTrace, (checked) =>
+      onChange({ hoverTrace: checked }),
+    ),
     h("div", { class: "row-actions" }, button("reset to defaults", onReset)),
     h("p", { class: "hint" }, "Kept in this browser, not in the shareable link."),
   );

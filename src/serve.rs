@@ -109,9 +109,16 @@ fn serve_static(request: Request, ui_dir: &Path, url: &str) -> Result<()> {
 fn respond(request: Request, status: u16, content_type: &str, body: Vec<u8>) -> Result<()> {
     let header = Header::from_bytes(&b"Content-Type"[..], content_type.as_bytes())
         .map_err(|_| anyhow::anyhow!("bad content type"))?;
+    // Every file is read off disk per request so that editing the viewer shows
+    // up on a reload. Without this the browser keeps the copy it already has,
+    // and a page half of whose modules are the old ones is worse than a stale
+    // one: the halves disagree about what they call each other.
+    let no_store = Header::from_bytes(&b"Cache-Control"[..], &b"no-store"[..])
+        .map_err(|_| anyhow::anyhow!("bad cache header"))?;
     let response = Response::from_data(body)
         .with_status_code(status)
-        .with_header(header);
+        .with_header(header)
+        .with_header(no_store);
     request.respond(response)?;
     Ok(())
 }

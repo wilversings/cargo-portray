@@ -31,30 +31,38 @@ export function h(tag, attrs = {}, ...children) {
 }
 
 /**
- * @param {string} title
- * @param {...(Node|string|null|undefined|false)} children
+ * Panels folded shut, by title.
+ *
+ * Which panels are open is display-only — it says nothing about what is drawn,
+ * so it stays out of the URL and out of the filter state, and lives here
+ * instead so that a rebuilt sidebar comes back the way it was left.
+ *
+ * Appearance starts folded: it is a standing preference, set once, and the
+ * longest panel of the lot.
  */
-export function section(title, ...children) {
-  return h("section", { class: "panel" }, h("h2", {}, title), ...children);
-}
+const folded = new Set(["Appearance"]);
 
 /**
- * A collapsible section, for the panels that are long but rarely touched.
+ * A panel, collapsed by clicking its heading.
  *
  * The children are always built. Building them only when open would mean the
  * `toggle` event has to trigger a re-render before there is anything to see,
  * and `<details>` already hides what it holds — cheaper to hand it the rows.
  *
  * @param {string} title
- * @param {boolean} open
- * @param {(open: boolean) => void} onToggle
  * @param {...(Node|string|null|undefined|false)} children
  */
-export function foldout(title, open, onToggle, ...children) {
-  const details = h("details", { class: "panel", open });
+export function section(title, ...children) {
+  // A title carrying a count — `Hidden (3)` — names the same panel however
+  // many things are in it.
+  const key = title.replace(/\s*\(.*\)$/, "");
+  const details = h("details", { class: "panel", open: !folded.has(key) });
   const real = children.filter((child) => child !== null && child !== undefined && child !== false);
-  details.append(h("summary", {}, title), ...real);
-  details.addEventListener("toggle", () => onToggle(details.open));
+  details.append(h("summary", {}, h("span", { class: "panel-title" }, title)), ...real);
+  details.addEventListener("toggle", () => {
+    if (details.open) folded.delete(key);
+    else folded.add(key);
+  });
   return details;
 }
 

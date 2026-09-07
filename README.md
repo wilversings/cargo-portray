@@ -59,26 +59,24 @@ page, re-laying out whenever a filter changes.
   inherent method, trait method, impl method.
 - **Individual artifacts**, hidden by click or by regex — `Error$` takes out a
   whole family of noise at once.
-- **Documentation markers**, if the circled *i*s are in the way.
 
 Collapsing a module into a single box, with edge weights counting what runs
 underneath, is the way to read a crate this size: zoom out to modules, expand
 only what you are reading.
 
-## The documentation is in the diagram
+The panels themselves fold away — every one of them, by its heading — and the
+sidebar is dragged wider by the seam it shares with the diagram, because a
+crate whose module paths run four deep needs more than three hundred pixels
+and one whose filters are already set needs none of it. The width is kept in
+this browser, like the colours.
 
-Anything with a doc comment carries a small circled *i*: on the header of a
-struct, enum or trait, on the row of any field or variant documented on its
-own, and in the corner of a function, method or const. Hover one and the
-comment appears, rendered — headings, lists, `code`, fenced examples with the
-`#` setup lines hidden the way rustdoc hides them. Click it instead and the
-panel stays put so you can read a long one, select from it, or scroll it;
-escape or a click elsewhere dismisses it.
+## The documentation is in the sidebar
 
-The same text is in the sidebar whenever an artifact is selected, its
-documented fields listed under it, because "what is this one thing" while
-reading the picture and "what does this artifact say" once you have picked it
-are different questions.
+Click an artifact and its doc comment is rendered under it — headings, lists,
+`code`, fenced examples with the `#` setup lines hidden the way rustdoc hides
+them — with every documented field or variant listed below. The diagram stays
+a diagram: nothing is written into it that the reader has to click past, and
+the one selected artifact is the one being read about.
 
 The extractor carries the comment exactly as written and the viewer decides
 what it looks like — the markdown it understands is the subset doc comments

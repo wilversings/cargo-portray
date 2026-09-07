@@ -161,9 +161,6 @@ export function optionsPanel(store) {
     checkbox("struct fields and enum variants", state.showMembers, (checked) =>
       store.update({ showMembers: checked }),
     ),
-    checkbox("documentation markers", state.showDocs, (checked) =>
-      store.update({ showDocs: checked }),
-    ),
     checkbox("artifacts with no visible edge", state.showOrphans, (checked) =>
       store.update({ showOrphans: checked }),
     ),
