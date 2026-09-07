@@ -1,10 +1,17 @@
 [package]
 name = "cargo-portray"
-version = "0.1.0"
+version = "0.9.0"
 edition = "2021"
 rust-version = "1.85"
 description = "Interactive item-level dependency explorer for Rust crates"
+license = "GPL-3.0-or-later"
+
+# Release todo list
+# - Implement method-in-struct feature
 publish = false
+
+readme = "README.md"
+repository = "https://github.com/wilversings/cargo-portray"
 
 # Deliberately detached from the konductord package above it. This is dev
 # tooling: it must not appear in the daemon's Cargo.lock, must not be dragged
