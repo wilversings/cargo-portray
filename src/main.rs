@@ -10,6 +10,7 @@
 mod export;
 mod extract;
 mod model;
+mod par;
 mod resolve;
 mod serve;
 mod ui;

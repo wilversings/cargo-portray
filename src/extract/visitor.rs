@@ -1,6 +1,6 @@
 //! The `syn::Visit` pass that turns parsed files into nodes and edges.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use quote::ToTokens;
 use syn::visit::{self, Visit};
@@ -19,43 +19,52 @@ use crate::resolve::{join, Resolver, UseMap};
 
 /// `quote!` renders every token space-separated. Squeeze it back into
 /// something that reads like source.
+///
+/// One pass, deciding each space on its neighbours, because this runs on
+/// every field type, every visibility and every signature in the crate — on
+/// a large one that is millions of calls, and a rule-at-a-time rewrite walks
+/// and reallocates the whole string once per rule.
 pub fn squeeze(s: &str) -> String {
-    // The generic-bracket rules below would eat the space in `-> Foo`, so the
-    // arrows are parked out of reach first.
-    const ARROWS: &[(&str, &str)] = &[("->", "\u{1}"), ("=>", "\u{2}")];
-    const RULES: &[(&str, &str)] = &[
-        (" :: ", "::"),
-        (":: ", "::"),
-        (" ::", "::"),
-        (" (", "("),
-        ("( ", "("),
-        (" )", ")"),
-        (" [", "["),
-        ("[ ", "["),
-        (" ]", "]"),
-        (" < ", "<"),
-        ("< ", "<"),
-        (" <", "<"),
-        (" > ", ">"),
-        ("> ", ">"),
-        (" >", ">"),
-        (" ,", ","),
-        ("& ", "&"),
-        (" '", "'"),
-        (" ;", ";"),
-        (" :", ":"),
-    ];
-    let mut out = s.to_string();
-    for (arrow, parked) in ARROWS {
-        out = out.replace(arrow, parked);
+    /// Characters that swallow the space in front of them.
+    const BEFORE: &[char] = &['(', ')', '[', ']', '<', '>', ',', '\'', ';', ':'];
+    /// Characters that swallow the space behind them. `::` does too, but a
+    /// lone `:` does not — `x: Foo` keeps its space.
+    const AFTER: &[char] = &['(', '[', '<', '>', '&'];
+
+    let mut out = String::with_capacity(s.len());
+    let mut rest = s.chars().peekable();
+    // `->` and `=>` are single tokens: the `>` that ends one is not a closing
+    // bracket, and the spaces around it are the ones that make a signature
+    // readable.
+    let mut after_arrow = false;
+
+    while let Some(c) = rest.next() {
+        if c != ' ' {
+            after_arrow = (c == '-' || c == '=') && rest.peek() == Some(&'>');
+            out.push(c);
+            if after_arrow {
+                rest.next();
+                out.push('>');
+            }
+            continue;
+        }
+
+        let swallowed_behind = !after_arrow && (out.ends_with("::") || out.ends_with(AFTER));
+        let swallowed_ahead = match rest.peek() {
+            // Nothing in `BEFORE` starts an arrow, so a `-` or `=` here is
+            // either one or an operator, and both keep their space.
+            Some('-') | Some('=') | None => false,
+            Some(next) => BEFORE.contains(next),
+        };
+        if !swallowed_behind && !swallowed_ahead {
+            out.push(' ');
+        }
+        after_arrow = false;
     }
-    for (from, to) in RULES {
-        out = out.replace(from, to);
-    }
-    for (arrow, parked) in ARROWS {
-        out = out.replace(parked, arrow);
-    }
-    out.trim().to_string()
+
+    out.truncate(out.trim_end().len());
+    out.drain(..out.len() - out.trim_start().len());
+    out
 }
 
 fn render<T: ToTokens>(node: &T) -> String {
@@ -188,8 +197,11 @@ pub struct Collector<'a> {
     generics: Vec<Vec<String>>,
     owners: Vec<OwnerCtx>,
     fns: Vec<FnCtx>,
-    pub nodes: BTreeMap<String, Node>,
-    pub edges: BTreeSet<Edge>,
+    /// Appended to, not deduplicated. One global sort at the end does both
+    /// jobs at once and does them on a flat array, which a crate's worth of
+    /// string-keyed tree inserts cannot compete with.
+    pub nodes: Vec<Node>,
+    pub edges: Vec<Edge>,
     /// Call sites, resolved once the whole crate has been walked.
     pub pending_calls: Vec<PendingCall>,
     pub method_owners: Vec<MethodOwner>,
@@ -211,8 +223,8 @@ impl<'a> Collector<'a> {
             generics: Vec::new(),
             owners: Vec::new(),
             fns: Vec::new(),
-            nodes: BTreeMap::new(),
-            edges: BTreeSet::new(),
+            nodes: Vec::new(),
+            edges: Vec::new(),
             pending_calls: Vec::new(),
             method_owners: Vec::new(),
         }
@@ -281,7 +293,7 @@ impl<'a> Collector<'a> {
             if target.id == from {
                 continue;
             }
-            self.edges.insert(Edge {
+            self.edges.push(Edge {
                 from: from.to_string(),
                 from_port: port.map(str::to_string),
                 to: target.id,
@@ -293,7 +305,9 @@ impl<'a> Collector<'a> {
     }
 
     fn add_node(&mut self, node: Node) {
-        self.nodes.entry(node.id.clone()).or_insert(node);
+        // Duplicates are left in; the sort that merges the shares is stable,
+        // so the first definition of an id is still the one that survives.
+        self.nodes.push(node);
     }
 
     /// Bound edges from `<T: Action>` and `where` clauses.
@@ -641,7 +655,7 @@ impl<'ast, 'a> Visit<'ast> for Collector<'a> {
                     ),
                 ) {
                     if from.id != to.id {
-                        self.edges.insert(Edge {
+                        self.edges.push(Edge {
                             from: from.id,
                             from_port: None,
                             to: to.id,

@@ -33,6 +33,18 @@ impl Index {
     pub fn contains(&self, full_path: &str) -> bool {
         self.defined.contains_key(full_path)
     }
+
+    /// Folds another index into this one, as though its files had been walked
+    /// straight after this one's. Absorbing shares in file order is what makes
+    /// a parallel walk agree with a sequential one: `by_name` keeps candidates
+    /// in the order they were defined, and the first is the one a lone
+    /// definition-by-name resolves to.
+    pub fn absorb(&mut self, other: Index) {
+        for (name, paths) in other.by_name {
+            self.by_name.entry(name).or_default().extend(paths);
+        }
+        self.defined.extend(other.defined);
+    }
 }
 
 /// What one module's `use` statements bring into scope.
@@ -46,6 +58,15 @@ pub struct UseMap {
     pub names: BTreeMap<String, String>,
     /// Module prefixes brought in by `use foo::*`.
     pub globs: Vec<String>,
+}
+
+impl UseMap {
+    /// Merges another module's-worth of imports in, later ones winning, which
+    /// is what a single walk reaching them second would have done.
+    pub fn absorb(&mut self, other: UseMap) {
+        self.names.extend(other.names);
+        self.globs.extend(other.globs);
+    }
 }
 
 /// A name that was successfully pinned to a definition.

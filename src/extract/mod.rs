@@ -7,11 +7,15 @@ pub mod visitor;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Barrier, Mutex, OnceLock};
+use std::time::Instant;
 
 use anyhow::Result;
 use syn::visit::{self, Visit};
 
-use crate::model::{Graph, NodeKind};
+use crate::extract::calls::{MethodOwner, PendingCall};
+use crate::model::{Edge, Graph, Node, NodeKind};
 use crate::resolve::{collect_use_maps, Index, Resolver, UseMap};
 use visitor::{is_test_mod, Collector};
 
@@ -131,8 +135,58 @@ impl Scope {
     }
 }
 
+/// Phase timings, printed when `PORTRAY_TIMING` is set.
+///
+/// Extraction is one straight line of passes, so knowing which pass owns the
+/// wall clock is the whole story; anything finer belongs in a profiler.
+struct Timing {
+    on: bool,
+    start: Instant,
+    last: Instant,
+}
+
+impl Timing {
+    fn start() -> Self {
+        let now = Instant::now();
+        Timing {
+            on: std::env::var_os("PORTRAY_TIMING").is_some(),
+            start: now,
+            last: now,
+        }
+    }
+
+    fn mark(&mut self, label: &str) {
+        let now = Instant::now();
+        if self.on {
+            eprintln!(
+                "  {label:<14} {:>8.1} ms",
+                now.duration_since(self.last).as_secs_f64() * 1000.0
+            );
+        }
+        self.last = now;
+    }
+
+    fn total(&self) {
+        if self.on {
+            eprintln!(
+                "  {:<14} {:>8.1} ms",
+                "TOTAL",
+                self.start.elapsed().as_secs_f64() * 1000.0
+            );
+        }
+    }
+}
+
 /// Walks a crate's `src` tree and builds the graph.
+///
+/// The work is split by file across the machine's cores. That split is not
+/// free to arrange, because a parsed `syn::File` is not `Send` — proc-macro2
+/// pins its spans to one thread — so a file cannot be parsed here and walked
+/// there. Each worker therefore keeps the files it parsed for the whole run
+/// and both passes happen on that thread, with one rendezvous in the middle
+/// where the crate-wide index every worker needs for pass 2 is merged.
 pub fn extract(crate_root: &Path, scope: &Scope) -> Result<Graph> {
+    let mut timing = Timing::start();
     let src_root = crate_root.join("src");
     anyhow::ensure!(
         src_root.is_dir(),
@@ -156,61 +210,237 @@ pub fn extract(crate_root: &Path, scope: &Scope) -> Result<Graph> {
     // scope: on a crate with ten thousand files, not parsing the nine
     // thousand you are not reading is the difference that makes it usable.
     files.retain(|path| scope.may_contain(&module_prefix_for(path, &src_root)));
+    timing.mark("walk");
 
-    let parsed: Vec<ParsedFile> = files
-        .into_iter()
+    let shares = share_out(&files);
+    let workers = worker_count(shares.len());
+    let first: Vec<Mutex<Pass1>> = shares.iter().map(|_| Mutex::default()).collect();
+    let second: Vec<Mutex<Pass2>> = shares.iter().map(|_| Mutex::default()).collect();
+    let next = AtomicUsize::new(0);
+    // Set once pass 1 has been merged, and the signal that pass 2 may start.
+    // Left empty when the scope check fails, which is how the workers learn
+    // there is nothing more to do.
+    let merged: OnceLock<(Index, BTreeMap<String, UseMap>)> = OnceLock::new();
+    let rendezvous = Barrier::new(workers + 1);
+
+    let mut outcome: Result<()> = Ok(());
+    std::thread::scope(|threads| {
+        for _ in 0..workers {
+            let (shares, first, second) = (&shares, &first, &second);
+            let (merged, rendezvous, next) = (&merged, &rendezvous, &next);
+            let (crate_root, src_root) = (crate_root, &src_root);
+            threads.spawn(move || {
+                // Shares are claimed rather than dealt out. One source file
+                // can be a hundred times the size of another — the `windows`
+                // crate has a 3.5 MB one — so a fixed deal leaves most of the
+                // machine waiting on whichever worker drew the big files.
+                let mut mine = Vec::new();
+                loop {
+                    let taken = next.fetch_add(1, Ordering::Relaxed);
+                    let Some(share) = shares.get(taken) else {
+                        break;
+                    };
+                    let parsed = parse_share(share, crate_root, src_root);
+                    if let Some(slot) = first.get(taken) {
+                        store(slot, index_share(&parsed, scope));
+                    }
+                    mine.push((taken, parsed));
+                }
+
+                // Everything below needs the whole crate's index, so this is
+                // where a worker waits for the others to catch up. The second
+                // wait is the main thread handing back the merged result.
+                rendezvous.wait();
+                rendezvous.wait();
+                let Some((index, use_maps)) = merged.get() else {
+                    return;
+                };
+                for (taken, parsed) in &mine {
+                    if let Some(slot) = second.get(*taken) {
+                        store(slot, collect_share(parsed, index, use_maps, scope));
+                    }
+                }
+            });
+        }
+
+        rendezvous.wait();
+        timing.mark("parse+index");
+
+        let (index, use_maps, seen) = merge_first(&first);
+        // A module can be a file or an inline `mod` block, so whether the
+        // scope named a real one is only knowable once pass 1 has walked
+        // both. Saying so beats handing back an empty diagram for a typo.
+        match scope.check_matched(&seen, &declared) {
+            Ok(()) => {
+                let _ = merged.set((index, use_maps));
+            }
+            Err(error) => outcome = Err(error),
+        }
+        // Unconditional: the workers are parked on it, and a failed scope
+        // check must release them rather than hang the program.
+        rendezvous.wait();
+    });
+    outcome?;
+
+    timing.mark("collect");
+
+    let Some((index, use_maps)) = merged.get() else {
+        // Only reachable when the scope check failed, which `outcome?` above
+        // has already returned.
+        anyhow::bail!("extraction produced nothing");
+    };
+    let resolver = Resolver { index };
+    let graph = finish(
+        merge_second(&second),
+        &resolver,
+        use_maps,
+        crate_name(crate_root),
+        scope.display(),
+    );
+    timing.mark("calls");
+    timing.total();
+    Ok(graph)
+}
+
+/// What one worker produces in pass 1.
+#[derive(Default)]
+struct Pass1 {
+    index: Index,
+    use_maps: BTreeMap<String, UseMap>,
+    seen: BTreeSet<String>,
+}
+
+/// What one worker produces in pass 2 — the same four things a single
+/// `Collector` used to hold, for its share of the files.
+#[derive(Default)]
+struct Pass2 {
+    nodes: Vec<Node>,
+    edges: Vec<Edge>,
+    pending_calls: Vec<PendingCall>,
+    method_owners: Vec<MethodOwner>,
+}
+
+/// Splits the files into contiguous shares, several per core.
+///
+/// This one cannot go through `par::map_chunks`, because a worker has to hold
+/// on to what it parsed across the rendezvous in the middle of `extract`.
+fn share_out(files: &[PathBuf]) -> Vec<&[PathBuf]> {
+    crate::par::chunks(files, crate::par::cores() * 8)
+}
+
+fn worker_count(shares: usize) -> usize {
+    crate::par::cores().min(shares).max(1)
+}
+
+/// A poisoned lock means a worker panicked, and there is nothing useful to
+/// merge from it; the rest of the run still stands.
+fn store<T>(slot: &Mutex<T>, value: T) {
+    if let Ok(mut held) = slot.lock() {
+        *held = value;
+    }
+}
+
+fn parse_share(share: &[PathBuf], crate_root: &Path, src_root: &Path) -> Vec<ParsedFile> {
+    share
+        .iter()
         .filter_map(|path| {
-            let content = fs::read_to_string(&path).ok()?;
+            let content = fs::read_to_string(path).ok()?;
             let file = syn::parse_file(&content).ok()?;
             let display = path
                 .strip_prefix(crate_root)
-                .unwrap_or(&path)
+                .unwrap_or(path)
                 .to_string_lossy()
                 .into_owned();
             Some(ParsedFile {
-                module: module_prefix_for(&path, &src_root),
+                module: module_prefix_for(path, src_root),
                 display,
                 file,
             })
         })
-        .collect();
+        .collect()
+}
 
-    // Pass 1: what this crate defines, and what each module imports.
-    let mut index = Index::default();
-    let mut use_maps: BTreeMap<String, UseMap> = BTreeMap::new();
-    let mut seen: BTreeSet<String> = BTreeSet::new();
-    for parsed in &parsed {
+/// Pass 1 over one share: what these files define, and what each of their
+/// modules imports.
+fn index_share(parsed: &[ParsedFile], scope: &Scope) -> Pass1 {
+    let mut out = Pass1::default();
+    for parsed in parsed {
         let module = parsed.module.join("::");
-        seen.insert(module.clone());
+        out.seen.insert(module.clone());
         IndexCollector {
-            index: &mut index,
+            index: &mut out.index,
             mod_stack: parsed.module.clone(),
             scope,
-            seen: &mut seen,
+            seen: &mut out.seen,
         }
         .visit_file(&parsed.file);
-        collect_use_maps(&parsed.file, &module, &mut use_maps);
+        collect_use_maps(&parsed.file, &module, &mut out.use_maps);
     }
+    out
+}
 
-    // A module can be a file or an inline `mod` block, so whether the scope
-    // named a real one is only knowable once pass 1 has walked both. Saying
-    // so beats handing back an empty diagram for a typo.
-    scope.check_matched(&seen, &declared)?;
-
-    // Pass 2: nodes and edges, with every name resolved against pass 1.
-    let resolver = Resolver { index: &index };
-    let mut collector = Collector::new(&resolver, &use_maps, scope);
-    for parsed in &parsed {
+/// Pass 2 over one share: nodes and edges, with every name resolved against
+/// the whole crate's pass 1.
+fn collect_share(
+    parsed: &[ParsedFile],
+    index: &Index,
+    use_maps: &BTreeMap<String, UseMap>,
+    scope: &Scope,
+) -> Pass2 {
+    let resolver = Resolver { index };
+    let mut collector = Collector::new(&resolver, use_maps, scope);
+    for parsed in parsed {
         collector.run(&parsed.file, &parsed.display, &parsed.module);
     }
+    // Sorted here, on the worker, rather than once at the end on the whole
+    // crate. The merge below then has runs to work with instead of a shuffled
+    // pile, and this is the only part of the ordering work that parallelises.
+    let mut nodes = collector.nodes;
+    nodes.sort_by(|a, b| a.id.cmp(&b.id));
+    nodes.dedup_by(|a, b| a.id == b.id);
+    let mut edges = collector.edges;
+    edges.sort_unstable();
+    edges.dedup();
 
-    Ok(finish(
-        collector,
-        &resolver,
-        &use_maps,
-        crate_name(crate_root),
-        scope.display(),
-    ))
+    Pass2 {
+        nodes,
+        edges,
+        pending_calls: collector.pending_calls,
+        method_owners: collector.method_owners,
+    }
+}
+
+fn merge_first(shares: &[Mutex<Pass1>]) -> (Index, BTreeMap<String, UseMap>, BTreeSet<String>) {
+    let mut index = Index::default();
+    let mut use_maps: BTreeMap<String, UseMap> = BTreeMap::new();
+    let mut seen = BTreeSet::new();
+    for share in shares {
+        let Ok(mut share) = share.lock() else {
+            continue;
+        };
+        let share = std::mem::take(&mut *share);
+        index.absorb(share.index);
+        for (module, uses) in share.use_maps {
+            use_maps.entry(module).or_default().absorb(uses);
+        }
+        seen.extend(share.seen);
+    }
+    (index, use_maps, seen)
+}
+
+fn merge_second(shares: &[Mutex<Pass2>]) -> Pass2 {
+    let mut out = Pass2::default();
+    for share in shares {
+        let Ok(mut share) = share.lock() else {
+            continue;
+        };
+        let share = std::mem::take(&mut *share);
+        out.nodes.extend(share.nodes);
+        out.edges.extend(share.edges);
+        out.pending_calls.extend(share.pending_calls);
+        out.method_owners.extend(share.method_owners);
+    }
+    out
 }
 
 /// Resolves the call sites gathered during the pass and hands back the graph.
@@ -219,27 +449,40 @@ pub fn extract(crate_root: &Path, scope: &Scope) -> Result<Graph> {
 /// defined three files later, so the target node id does not exist yet. This
 /// runs once, when it does.
 fn finish(
-    collector: Collector,
+    collected: Pass2,
     resolver: &Resolver,
     use_maps: &BTreeMap<String, UseMap>,
     krate: String,
     scope: Vec<String>,
 ) -> Graph {
-    let mut edges = collector.edges;
+    let mut nodes = collected.nodes;
+    // Stable, so that when two files define the same id the earlier file's
+    // node is the one kept — which is what a single walk did with
+    // `or_insert`, and what keeps the output independent of the thread
+    // scheduling that produced it.
+    nodes.sort_by(|a, b| a.id.cmp(&b.id));
+    nodes.dedup_by(|a, b| a.id == b.id);
+
+    let mut edges = collected.edges;
     edges.extend(calls::resolve_calls(
-        &collector.pending_calls,
-        &collector.method_owners,
-        &collector.nodes,
+        &collected.pending_calls,
+        &collected.method_owners,
+        &nodes,
         resolver,
         use_maps,
     ));
+    // Stable rather than unstable, even though equal edges are
+    // interchangeable: the shares arrive already sorted, and a stable sort is
+    // the one that notices and merges the runs instead of re-sorting them.
+    edges.sort();
+    edges.dedup();
 
     Graph {
         krate,
         root: "src".to_string(),
         scope,
-        nodes: collector.nodes.into_values().collect(),
-        edges: edges.into_iter().collect(),
+        nodes,
+        edges,
     }
 }
 
@@ -437,32 +680,20 @@ pub fn extract_sources_in(sources: &[(&str, &str)], scope: &Scope) -> Result<Gra
         })
         .collect::<Result<_>>()?;
 
-    let mut index = Index::default();
-    let mut use_maps: BTreeMap<String, UseMap> = BTreeMap::new();
-    let mut seen: BTreeSet<String> = BTreeSet::new();
-    for parsed in &parsed {
-        seen.insert(parsed.module.join("::"));
-        IndexCollector {
-            index: &mut index,
-            mod_stack: parsed.module.clone(),
-            scope,
-            seen: &mut seen,
-        }
-        .visit_file(&parsed.file);
-        collect_use_maps(&parsed.file, &parsed.module.join("::"), &mut use_maps);
-    }
-    scope.check_matched(&seen, &declared)?;
+    // One share, so the fixture goes through the same two passes a real run
+    // does without the threads in between.
+    let first = index_share(&parsed, scope);
+    scope.check_matched(&first.seen, &declared)?;
 
-    let resolver = Resolver { index: &index };
-    let mut collector = Collector::new(&resolver, &use_maps, scope);
-    for parsed in &parsed {
-        collector.run(&parsed.file, &parsed.display, &parsed.module);
-    }
+    let resolver = Resolver {
+        index: &first.index,
+    };
+    let collected = collect_share(&parsed, &first.index, &first.use_maps, scope);
 
     Ok(finish(
-        collector,
+        collected,
         &resolver,
-        &use_maps,
+        &first.use_maps,
         "fixture".to_string(),
         scope.display(),
     ))

@@ -52,37 +52,50 @@ pub struct MethodOwner {
 pub fn resolve_calls(
     pending: &[PendingCall],
     owners: &[MethodOwner],
-    nodes: &BTreeMap<String, Node>,
+    nodes: &[Node],
     resolver: &Resolver,
     use_maps: &BTreeMap<String, UseMap>,
-) -> BTreeSet<Edge> {
+) -> Vec<Edge> {
     let index = CallIndex::build(nodes, owners, resolver, use_maps);
-    let fallback = UseMap::default();
-    let mut edges = BTreeSet::new();
 
-    for call in pending {
-        let uses = use_maps.get(&call.module).unwrap_or(&fallback);
-        let targets = match &call.callee {
-            Callee::Path(path) => index.by_path(path, call, resolver, uses),
-            Callee::Method(name) => candidates(&index.methods_by_name, name),
-        };
-        for (to, ambiguous) in targets {
-            // A function calling itself would draw a loop onto its own box,
-            // which says less than the missing edge does.
-            if to == call.from {
-                continue;
+    // Every call site is resolved against the same finished index and answers
+    // independently of every other, so the list is walked on every core. The
+    // per-chunk sets are unioned afterwards; a set union does not care what
+    // order it is done in, which is why this needs no ordering guarantee
+    // beyond the one `map_chunks` already gives.
+    let sets = crate::par::map_chunks(pending, |chunk| {
+        let fallback = UseMap::default();
+        let mut edges = BTreeSet::new();
+        for call in chunk {
+            let uses = use_maps.get(&call.module).unwrap_or(&fallback);
+            let targets = match &call.callee {
+                Callee::Path(path) => index.by_path(path, call, resolver, uses),
+                Callee::Method(name) => candidates(&index.methods_by_name, name),
+            };
+            for (to, ambiguous) in targets {
+                // A function calling itself would draw a loop onto its own
+                // box, which says less than the missing edge does.
+                if to == call.from {
+                    continue;
+                }
+                edges.insert(Edge {
+                    from: call.from.clone(),
+                    from_port: None,
+                    to,
+                    rel: Rel::Call,
+                    // A call has no nesting to record: it either happened or
+                    // it did not. `Via` stays orthogonal by staying `Direct`.
+                    via: Via::Direct,
+                    ambiguous,
+                });
             }
-            edges.insert(Edge {
-                from: call.from.clone(),
-                from_port: None,
-                to,
-                rel: Rel::Call,
-                // A call has no nesting to record: it either happened or it
-                // did not. `Via` stays orthogonal by staying `Direct`.
-                via: Via::Direct,
-                ambiguous,
-            });
         }
+        edges
+    });
+
+    let mut edges = Vec::new();
+    for set in sets {
+        edges.extend(set);
     }
     edges
 }
@@ -101,14 +114,14 @@ struct CallIndex {
 
 impl CallIndex {
     fn build(
-        nodes: &BTreeMap<String, Node>,
+        nodes: &[Node],
         owners: &[MethodOwner],
         resolver: &Resolver,
         use_maps: &BTreeMap<String, UseMap>,
     ) -> Self {
         let mut fns = BTreeSet::new();
         let mut fns_by_name: BTreeMap<String, Vec<String>> = BTreeMap::new();
-        for node in nodes.values() {
+        for node in nodes {
             if node.kind == NodeKind::Fn {
                 fns.insert(node.id.clone());
                 fns_by_name
@@ -118,20 +131,37 @@ impl CallIndex {
             }
         }
 
-        let fallback = UseMap::default();
-        let mut methods: BTreeMap<(String, String), Vec<String>> = BTreeMap::new();
-        let mut methods_by_name: BTreeMap<String, Vec<String>> = BTreeMap::new();
-        for owner in owners {
-            methods_by_name
-                .entry(owner.name.clone())
-                .or_default()
-                .push(owner.node.clone());
-            let uses = use_maps.get(&owner.module).unwrap_or(&fallback);
-            if let Some(ty) = resolver.resolve(&owner.type_path, &owner.module, uses) {
-                methods
-                    .entry((ty.id, owner.name.clone()))
+        // Each method's owning type is resolved against the pass-1 index,
+        // which is finished and read-only by now, so the list splits across
+        // the cores and the fragments are folded back in chunk order.
+        let shares = crate::par::map_chunks(owners, |chunk| {
+            let fallback = UseMap::default();
+            let mut methods: BTreeMap<(String, String), Vec<String>> = BTreeMap::new();
+            let mut methods_by_name: BTreeMap<String, Vec<String>> = BTreeMap::new();
+            for owner in chunk {
+                methods_by_name
+                    .entry(owner.name.clone())
                     .or_default()
                     .push(owner.node.clone());
+                let uses = use_maps.get(&owner.module).unwrap_or(&fallback);
+                if let Some(ty) = resolver.resolve(&owner.type_path, &owner.module, uses) {
+                    methods
+                        .entry((ty.id, owner.name.clone()))
+                        .or_default()
+                        .push(owner.node.clone());
+                }
+            }
+            (methods, methods_by_name)
+        });
+
+        let mut methods: BTreeMap<(String, String), Vec<String>> = BTreeMap::new();
+        let mut methods_by_name: BTreeMap<String, Vec<String>> = BTreeMap::new();
+        for (share_methods, share_by_name) in shares {
+            for (key, ids) in share_methods {
+                methods.entry(key).or_default().extend(ids);
+            }
+            for (name, ids) in share_by_name {
+                methods_by_name.entry(name).or_default().extend(ids);
             }
         }
 
