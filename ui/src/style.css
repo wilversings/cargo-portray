@@ -374,7 +374,47 @@ button:hover {
 }
 
 .module-row .indent {
+  display: flex;
+  align-self: stretch;
   flex: none;
+}
+
+/*
+ * Same width as .twisty and centered the same way, so a guide line sits
+ * exactly under the caret of the ancestor that owns that column.
+ */
+.module-row .guide {
+  flex: none;
+  width: 14px;
+  align-self: stretch;
+  display: flex;
+  justify-content: center;
+}
+
+.module-row .guide::before {
+  content: "";
+  width: 1px;
+  align-self: stretch;
+  background: var(--line);
+}
+
+.module-row .twisty {
+  flex: none;
+  width: 14px;
+  text-align: center;
+}
+
+.module-row button.twisty {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  line-height: 18px;
+}
+
+.module-row button.twisty:hover {
+  color: var(--ink);
 }
 
 .module-name {
