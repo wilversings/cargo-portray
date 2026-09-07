@@ -374,7 +374,36 @@ button:hover {
 }
 
 .module-row .indent {
+  display: flex;
+  align-self: stretch;
   flex: none;
+}
+
+.module-row .guide {
+  flex: none;
+  width: 12px;
+  align-self: stretch;
+  border-left: 1px solid var(--line);
+  margin-left: 5px;
+}
+
+.module-row .twisty {
+  flex: none;
+  width: 14px;
+  text-align: center;
+}
+
+.module-row button.twisty {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  line-height: 18px;
+}
+
+.module-row button.twisty:hover {
+  color: var(--ink);
 }
 
 .module-name {

@@ -34,6 +34,8 @@ let appearance = loadAppearance();
 let graph = { crate: "", root: "", scope: [], nodes: [], edges: [] };
 /** @type {string|null} */
 let selected = null;
+/** Modules folded shut in the sidebar tree — display-only, never shared. */
+const foldedModules = new Set();
 let lastDot = "";
 let pending = false;
 /** Set when the loaded view mentioned things this crate does not have. */
@@ -157,7 +159,11 @@ function renderSidebar() {
 
   sidebar.replaceChildren(
     detailsPanel(store, graph, selected),
-    modulePanel(store, graph),
+    modulePanel(store, graph, foldedModules, (module) => {
+      if (foldedModules.has(module)) foldedModules.delete(module);
+      else foldedModules.add(module);
+      renderSidebar();
+    }),
     presetPanel(store),
     relationPanel(store, graph, appearance),
     artifactPanel(store, graph, appearance),
