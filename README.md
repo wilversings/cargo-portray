@@ -1,5 +1,9 @@
 # cargo-portray
 
+[![License: GPL v3+](https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg)](LICENSE)
+[![Deploy to GitHub Pages](https://github.com/wilversings/cargo-portray/actions/workflows/deploy-pages.yml/badge.svg)](https://github.com/wilversings/cargo-portray/actions/workflows/deploy-pages.yml)
+[![Last commit](https://img.shields.io/github/last-commit/wilversings/cargo-portray)](https://github.com/wilversings/cargo-portray/commits/master)
+
 A map of your crate, in your browser: which struct holds which enum, which
 function takes which type, who implements what, and what calls what — drawn,
 filtered, and clickable.
@@ -11,7 +15,7 @@ cargo portray                 # then open the URL it prints
 
 ![cargo-portray drawing itself](assets/overview.png)
 
-<!-- Demo link goes here. -->
+**[Live demo](https://wilversings.github.io/cargo-portray/)** — this crate's own graph, exported and hosted with `cargo portray export`.
 
 Filters live in the browser and the current view is in the URL, so a diagram is
 a link you can paste, and the back button undoes a filter change.
