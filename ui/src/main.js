@@ -16,7 +16,7 @@ import { defaultState, onHashNavigation, readHash, reconcile, Store } from "./st
 const sidebar = document.getElementById("panels");
 const crateName = document.getElementById("crate-name");
 const toolbar = document.getElementById("toolbar");
-const canvasTools = document.getElementById("canvas-tools");
+const canvasSwitches = document.getElementById("canvas-switches");
 const viewport = document.getElementById("viewport");
 const statusLine = document.getElementById("status");
 
@@ -40,8 +40,8 @@ const foldedModules = new Set();
 /** What the module tree is being searched for — display-only, like the folds. */
 let moduleSearch = "";
 /**
- * Whether the panels and the toolbar are out of the way, and whether the
- * diagram is pinned where it was left.
+ * Whether the panels are out of the way, and whether the diagram is pinned
+ * where it was left.
  *
  * Both are display-only, like the folds and the sidebar's width: they say
  * nothing about which artifacts are drawn, so neither goes in the link. They
@@ -122,7 +122,111 @@ function exportPng() {
     "data:image/svg+xml;charset=utf-8," + encodeURIComponent(source);
 }
 
+/** A tray with the diagram dropping into it: what leaves the page. */
+const EXPORT_TRAY = "M4 15v3.5a1.5 1.5 0 0 0 1.5 1.5h13a1.5 1.5 0 0 0 1.5-1.5V15";
+const EXPORT_ARROW = ["M12 3.5v10.5", "M7.5 10l4.5 4 4.5-4"];
+
+/**
+ * Shuts the export menu, and says whether there was anything to shut. Replaced
+ * every time the toolbar is built; a no-op until there is one.
+ */
+let closeExport = () => false;
+
+/**
+ * The three file formats, behind one icon.
+ *
+ * They are a single errand — take the diagram somewhere else — that only
+ * branches at the last step, so the row spends one square on them instead of
+ * three words, and the choice of format is made after the reader has said they
+ * want a file. The menu shuts on the way out of every item, on a click
+ * anywhere else, and on Escape.
+ */
+function exportControl() {
+  const items = h(
+    "div",
+    { class: "menu-items", role: "menu" },
+    ...[
+      /** @type {const} */ ([
+        "DOT",
+        "the Graphviz source this view was laid out from",
+        () => download(`${graph.crate}-deps.dot`, lastDot, "text/vnd.graphviz"),
+      ]),
+      /** @type {const} */ ([
+        "SVG",
+        "the drawing itself, as vectors",
+        () => {
+          const svg = viewport.querySelector("svg");
+          if (!svg) return;
+          download(
+            `${graph.crate}-deps.svg`,
+            new XMLSerializer().serializeToString(svg),
+            "image/svg+xml",
+          );
+        },
+      ]),
+      /** @type {const} */ (["PNG", "the drawing as a picture, at twice the size", exportPng]),
+    ].map(([label, title, run]) =>
+      h(
+        "button",
+        {
+          type: "button",
+          role: "menuitem",
+          title,
+          onclick: () => {
+            setOpen(false);
+            run();
+          },
+        },
+        label,
+      ),
+    ),
+  );
+  items.hidden = true;
+
+  const opener = h(
+    "button",
+    {
+      type: "button",
+      class: "menu-open",
+      "aria-haspopup": "true",
+      "aria-expanded": "false",
+      // Nothing on the button reads as a word, so the name has to be given.
+      "aria-label": "export",
+      title: "export the diagram as DOT, SVG or PNG",
+      onclick: () => setOpen(items.hidden),
+    },
+    icon(EXPORT_TRAY, ...EXPORT_ARROW),
+  );
+
+  const menu = h("div", { class: "menu" }, opener, items);
+
+  /** @param {PointerEvent} event */
+  function onOutside(event) {
+    if (!menu.contains(/** @type {Node} */ (event.target))) setOpen(false);
+  }
+
+  /** @param {boolean} open */
+  function setOpen(open) {
+    items.hidden = !open;
+    opener.setAttribute("aria-expanded", String(open));
+    // Captured, so a press that lands on the diagram shuts the menu before the
+    // pan it starts gets going.
+    if (open) document.addEventListener("pointerdown", onOutside, true);
+    else document.removeEventListener("pointerdown", onOutside, true);
+  }
+
+  closeExport = () => {
+    const was = !items.hidden;
+    setOpen(false);
+    return was;
+  };
+
+  return menu;
+}
+
 function renderToolbar() {
+  // The menu about to be thrown away holds a listener on the document.
+  closeExport();
   const state = store.get();
   toolbar.replaceChildren(
     h("input", {
@@ -149,23 +253,24 @@ function renderToolbar() {
       { id: "node-ids" },
       ...graph.nodes.slice(0, 2000).map((node) => h("option", { value: node.id })),
     ),
-    button("fit", resetView, "fit the diagram to the window"),
-    button("reset", () => store.update(defaultState()), "back to the default view"),
-    h("span", { class: "spacer" }),
-    button("DOT", () => download(`${graph.crate}-deps.dot`, lastDot, "text/vnd.graphviz")),
-    button("SVG", () => {
-      const svg = viewport.querySelector("svg");
-      if (svg) {
-        download(
-          `${graph.crate}-deps.svg`,
-          new XMLSerializer().serializeToString(svg),
-          "image/svg+xml",
-        );
-      }
-    }),
-    button("PNG", exportPng),
+    button(icon(...FRAME), resetView, "fit the diagram to the window"),
+    button(icon(...UNDO), () => store.update(defaultState()), "back to the default view"),
+    // What the view is against what leaves the page: two different errands,
+    // and a hairline is enough to say so now that the row is only as wide as
+    // what is in it.
+    h("span", { class: "divider" }),
+    exportControl(),
   );
 }
+
+/**
+ * The two toolbar drawings. A frame with its corners drawn in is the window
+ * the diagram is about to be sized to; a loop turning back on itself is the
+ * way back to where the view started. Both say in a glyph what a word was
+ * saying before, and the row is the narrower for it.
+ */
+const FRAME = ["M4 9V5h4", "M16 4h4v4", "M20 15v4h-4", "M8 20H4v-4"];
+const UNDO = ["M3 12a9 9 0 1 0 2.6-6.4L3 8", "M3 3v5h5"];
 
 /**
  * The switches draw their own state: a shut padlock is locked, an open one is
@@ -182,13 +287,15 @@ const ARROWS_IN = ["M20 10h-6V4", "M14 10l7-7", "M4 14h6v6", "M10 14l-7 7"];
 /**
  * The two switches that float over the diagram.
  *
- * They live over the canvas rather than in the toolbar because one of them
- * hides the toolbar: a control that removes the surface it is standing on has
- * to stand somewhere else. The status line stays visible in both modes — it is
- * where a view with nothing in it says why.
+ * Both act on the canvas and nothing else — one pins what is drawn where it
+ * is, the other clears everything around it — which is why they are here and
+ * the toolbar is in the sidebar with the filters it belongs to. Full screen
+ * takes away the surface a control inside the sidebar would have been
+ * standing on, so it has to stand out here in any case. The status line stays
+ * visible in every mode — it is where a view with nothing in it says why.
  */
 function renderCanvasTools() {
-  canvasTools.replaceChildren(
+  canvasSwitches.replaceChildren(
     toggle(
       icon(LOCK_BODY, diagramLocked ? SHACKLE_SHUT : SHACKLE_OPEN),
       diagramLocked,
@@ -206,8 +313,8 @@ function renderCanvasTools() {
       chromeHidden,
       () => setChromeHidden(!chromeHidden),
       chromeHidden
-        ? "bring the panels and the toolbar back (or press Escape)"
-        : "full screen: hide the panels and the toolbar, leaving the diagram",
+        ? "bring the panels back (or press Escape)"
+        : "full screen: hide the panels, leaving the diagram",
     ),
   );
 }
@@ -222,6 +329,9 @@ function applyChrome() {
 /** @param {boolean} hidden */
 function setChromeHidden(hidden) {
   chromeHidden = hidden;
+  // The menu goes with the sidebar; left open, it would be waiting there when
+  // the panels came back.
+  if (hidden) closeExport();
   applyChrome();
 }
 
@@ -290,7 +400,7 @@ async function draw() {
 
     if (view.nodes.length === 0) {
       viewport.innerHTML = "";
-      statusLine.textContent = `Nothing to draw. ${view.emptyReason} Press reset to start over.${suffix()}`;
+      statusLine.textContent = `Nothing to draw. ${view.emptyReason} Press the reset button in the toolbar to start over.${suffix()}`;
       return;
     }
 
@@ -367,10 +477,13 @@ async function main() {
   onHashNavigation((state) => store.update(state));
 
   attachSidebarResize(document.getElementById("sidebar-resize"));
-  // The way out of a page with no visible chrome, for anyone who took the
-  // switch for a one-way door.
+  // The way out of anything the reader took for a one-way door, innermost
+  // first: the export menu shuts before the panels come back, so one press
+  // undoes one thing.
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && chromeHidden) setChromeHidden(false);
+    if (event.key !== "Escape") return;
+    if (closeExport()) return;
+    if (chromeHidden) setChromeHidden(false);
   });
   applyChrome();
   renderToolbar();
@@ -380,3 +493,5 @@ async function main() {
 }
 
 void main();
+
+

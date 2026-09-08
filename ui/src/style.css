@@ -94,6 +94,32 @@ body {
   outline: none;
 }
 
+/* The row under the title: what acts on the view as a whole, above the panels
+   that build it. The search box takes a line of its own — the basis is the
+   whole row, so the rest wraps under it at any sidebar width — and the buttons
+   sit under it in the order they are reached for. */
+#toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+#toolbar input[type="search"] {
+  flex: 1 1 100%;
+  min-width: 0;
+}
+
+/* Between what changes the view and what leaves the page. */
+#toolbar .divider {
+  align-self: stretch;
+  width: 1px;
+  margin: 0 2px;
+  background: var(--line);
+}
+
 /* Every panel folds, so a sidebar this long can be cut down to the two or
    three things a particular reading needs. */
 .panel {
@@ -596,40 +622,19 @@ button:hover {
 
 #canvas {
   display: grid;
-  grid-template-rows: auto 1fr auto;
+  grid-template-rows: 1fr auto;
   min-width: 0;
   height: 100vh;
 }
 
-#toolbar {
-  grid-row: 1;
-}
-
 #viewport,
-#canvas-tools {
-  grid-row: 2;
+#canvas-switches {
+  grid-row: 1;
   grid-column: 1;
 }
 
 #status {
-  grid-row: 3;
-}
-
-#toolbar {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 12px;
-  background: var(--panel);
-  border-bottom: 1px solid var(--line);
-}
-
-#toolbar input[type="search"] {
-  width: 280px;
-}
-
-#toolbar .spacer {
-  flex: 1;
+  grid-row: 2;
 }
 
 #viewport {
@@ -656,10 +661,11 @@ button:hover {
   font-variant-numeric: tabular-nums;
 }
 
-/* The switches that float over the diagram. They share the viewport's grid
-   cell rather than being positioned against the canvas, so they sit at the top
-   of the drawing whether or not the toolbar above it is there. */
-#canvas-tools {
+/* The switches float over the diagram: they share the viewport's grid cell
+   rather than being positioned against the canvas, so they sit at the top of
+   the drawing and the drawing keeps the whole window. Shrink-wrapped to the
+   two of them, so nothing is taken away from the drag underneath. */
+#canvas-switches {
   z-index: 2;
   justify-self: end;
   align-self: start;
@@ -668,22 +674,76 @@ button:hover {
   margin: 8px 12px;
 }
 
+/* The export button and the list it drops. The list is taken out of the flow
+   so opening it hangs over the panels below instead of pushing them down, and
+   it hangs from the button's left edge, the way the button was reached. */
+#toolbar .menu {
+  position: relative;
+  display: flex;
+}
+
+#toolbar .menu-items {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  box-shadow: 0 2px 6px rgb(31 41 51 / 16%);
+}
+
+/* `display: flex` outranks `hidden`, as it does for the toolbar itself. */
+#toolbar .menu-items[hidden] {
+  display: none;
+}
+
+/* Full-width rows reading as a list rather than as three more buttons. */
+#toolbar .menu-items button {
+  border-color: transparent;
+  background: none;
+  text-align: left;
+}
+
+#toolbar .menu-items button:hover {
+  background: #eef1f6;
+}
+
+#toolbar .menu-open[aria-expanded="true"] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 /* Square, because what is in them is a drawing and not a word: an icon padded
-   as though it were text sits off-centre in a box the wrong shape. */
-#canvas-tools button {
+   as though it were text sits off-centre in a box the wrong shape. This is the
+   same bargain the switches make, and the same shape, so the toolbar's own
+   drawn buttons read as a set with them. */
+#toolbar .menu-open,
+#toolbar button.icon,
+#canvas-switches button {
   display: grid;
   place-items: center;
   width: 28px;
   height: 28px;
   padding: 0;
-  /* Legible over whatever the diagram happens to have drawn underneath. */
+}
+
+/* Only the switches need lifting off the drawing; the export button already
+   has the toolbar's card behind it. */
+#canvas-switches button {
   background: rgb(255 255 255 / 92%);
   box-shadow: 0 1px 3px rgb(31 41 51 / 14%);
 }
 
 /* The shapes are in `icon`; the weight and the colour are here, so a switch
    that is on colours its drawing along with its border. */
-#canvas-tools svg {
+#toolbar .menu-open svg,
+#toolbar button.icon svg,
+#canvas-switches svg {
   width: 17px;
   height: 17px;
   fill: none;
@@ -693,17 +753,17 @@ button:hover {
   stroke-linejoin: round;
 }
 
-#canvas-tools button[aria-pressed="true"] {
+#canvas-switches button[aria-pressed="true"] {
   border-color: var(--accent);
   color: var(--accent);
 }
 
-/* Full screen: the panels and the toolbar go, the diagram and the line that
-   explains it stay. The seam goes with the sidebar — there is nothing left to
-   drag — and the grid loses the column it stood in. */
+/* Full screen: the panels go, the diagram and the line that explains it stay,
+   and `main.js` shuts the toolbar on the way in. The seam goes with the
+   sidebar — there is nothing left to drag — and the grid loses the column it
+   stood in. */
 body.chrome-hidden #sidebar,
-body.chrome-hidden #sidebar-resize,
-body.chrome-hidden #toolbar {
+body.chrome-hidden #sidebar-resize {
   display: none;
 }
 

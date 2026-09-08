@@ -14,6 +14,12 @@
     <div id="app">
       <aside id="sidebar">
         <header id="crate-name">loading…</header>
+        <!-- What acts on the view as a whole, above the filters that make it:
+             find an artifact, fit or reset, take a copy away. It reads with
+             the panels because it is the same errand as the panels — deciding
+             what is drawn — and leaves the canvas to the two switches that
+             only move what is already there. -->
+        <div id="toolbar"></div>
         <div id="panels"></div>
       </aside>
       <!-- The seam the sidebar is widened by; `sidebar.js` gives it meaning. -->
@@ -25,11 +31,12 @@
         tabindex="0"
       ></div>
       <main id="canvas">
-        <div id="toolbar"></div>
         <div id="viewport"></div>
-        <!-- Floats over the diagram rather than sitting in the toolbar, so the
-             switch that hides the chrome is still there once it has. -->
-        <div id="canvas-tools"></div>
+        <!-- The two switches that act on the canvas itself: they float over
+             the drawing rather than sitting in a band of their own, which is
+             also why the one that hides the panels is still there once it
+             has. -->
+        <div id="canvas-switches"></div>
         <div id="status"></div>
       </main>
     </div>

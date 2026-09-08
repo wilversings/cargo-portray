@@ -213,23 +213,52 @@ the page and look at it — see *Checking the viewer* below.
   about the link you share. It overrides folding while it is on, because a
   match counted in the line under the box and then left shut inside a folded
   ancestor reads as a lie.
+- **The toolbar is sidebar furniture; the canvas switches are not.** Search,
+  fit, reset and export act on the view as a whole, which is the errand the
+  panels under them are for — deciding what is drawn — so they sit in a row
+  below the crate name and above the first panel, not over the drawing. What
+  floats over the canvas is only what acts on the canvas: the lock and full
+  screen, which move what is already drawn and never choose it. Anything new
+  that belongs to the view as a whole goes in the toolbar; anything that only
+  moves the drawing goes in the switches. A strip across the top of the window
+  is still not on offer — that was what the drawer this row replaced was
+  avoiding, and the sidebar already had the width to spend.
+- **The three file formats are one control, not three.** DOT, SVG and PNG are
+  the same errand branching at the last step, so `exportControl` in `main.js`
+  spends one icon on them and asks which format only once the reader has said
+  they want a file — three words in the row would have been three decisions
+  taken before there was a question. The menu is plain DOM with its own local
+  state rather than another display-only flag: it belongs to the toolbar it is
+  built with, and a rebuilt toolbar shutting it is the right answer anyway.
+  What has to be remembered outside it is only how to close it — `closeExport`
+  — because a menu open behind a hidden sidebar, or left holding its
+  outside-click listener after a rebuild, is a menu nobody can reach.
+  `#toolbar .menu-items[hidden]` needs `display: none` spelled out, because
+  `display: flex` outranks what the `hidden` attribute asks for.
 - **Full screen and the lock are display-only too, and not even remembered.**
-  The two switches floating over the diagram — one hides the sidebar and the
-  toolbar, the other pins the view so the wheel and a drag stop moving it —
-  change what is around the diagram and never what is in it, so like the folds
-  they stay out of the URL. Unlike the sidebar's width they stay out of
+  The two switches floating over the diagram — one hides the sidebar, one pins
+  the view so the wheel and a drag stop moving it — change
+  what is around the diagram and never what is in it, so like the folds they
+  stay out of the URL. Unlike the sidebar's width they stay out of
   localStorage as well: a reader who cleared the chrome to look at one diagram
   should not find it gone the next time the page opens, and Escape is the way
-  back for anyone who took the switch for a one-way door. The status line is
-  not chrome — it is where a view with nothing in it says why — so it stays.
+  back for anyone who took a switch for a one-way door — innermost first, so it
+  shuts an open export menu before it brings the panels back, and one press
+  undoes one thing. Going full screen takes the toolbar with the sidebar it is
+  in, which is also why full screen itself cannot live in there: a control that
+  removes the surface it stands on has to stand somewhere else. The status line
+  is not chrome — it is where a
+  view with nothing in it says why — so it stays.
   The lock itself lives in `render.js` rather than in `panzoom.js` because
   every redraw builds a new SVG and a new pan, and a lock the reader switched
   on must survive the next filter click; it stops the gestures only, so a click
-  still selects and `fit` still fits. Both switches are icons, drawn by `icon`
+  still selects and `fit` still fits. The switches are icons, drawn by `icon`
   in `dom.js` as paths on a 24-unit grid, because an icon set is a dependency
-  and two outlines are a dozen path commands — and because a button with no
-  text in it has nothing for a screen reader to read, `toggle` promotes the
-  tooltip to the accessible name whenever the label is not a string.
+  and a handful of outlines are a few dozen path commands — and because a
+  button with no text in it has nothing for a screen reader to read, `toggle`
+  promotes the tooltip to the accessible name whenever the label is not a
+  string. The box they sit in is shrink-wrapped to the two of them, so the
+  diagram beside it keeps every pointer that lands there.
 - **The module tree's guide lines are computed, not decorative.** A guide
   column is drawn only where the subtree it stands for has rows below the one
   being drawn, and the row's own column turns into a tee or an elbow depending

@@ -88,12 +88,29 @@ export function checkbox(label, checked, onChange, swatch) {
 }
 
 /**
- * @param {string} label
+ * The label may be an icon instead of a word, in which case there is nothing
+ * on the button for a screen reader to read: the `title` becomes the name as
+ * well as the tooltip, and the `icon` class squares the box off, the way
+ * `toggle` does for the switches.
+ *
+ * @param {string|Node} label
  * @param {() => void} onClick
  * @param {string} [title]
  */
 export function button(label, onClick, title) {
-  return h("button", { type: "button", onclick: onClick, title: title ?? label }, label);
+  const drawn = typeof label !== "string";
+  const name = title ?? (drawn ? "" : label);
+  return h(
+    "button",
+    {
+      type: "button",
+      class: drawn ? "icon" : null,
+      "aria-label": drawn ? name : null,
+      onclick: onClick,
+      title: name,
+    },
+    label,
+  );
 }
 
 /**
