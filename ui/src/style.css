@@ -66,7 +66,12 @@
 body {
   margin: 0;
   background: var(--bg);
+  /* `dvh` is the window as it stands; on a phone `vh` is the window as it
+     would be with the address bar rolled away, which pushes the status line
+     under it and takes the bottom off the diagram. The `vh` line stays under
+     it for browsers that have not heard of `dvh`. */
   height: 100vh;
+  height: 100dvh;
   overflow: hidden;
 }
 
@@ -75,6 +80,7 @@ body {
   display: grid;
   grid-template-columns: var(--sidebar-width) 1fr;
   height: 100vh;
+  height: 100dvh;
 }
 
 /* ---------------------------------------------------------------- sidebar */
@@ -668,6 +674,7 @@ button:hover {
   grid-template-rows: 1fr auto;
   min-width: 0;
   height: 100vh;
+  height: 100dvh;
 }
 
 #viewport,
@@ -878,4 +885,92 @@ input.color {
 
 #viewport svg {
   cursor: grab;
+}
+
+/* ------------------------------------------------------------------ narrow */
+
+/*
+ * A phone is this page with nowhere to stand the panels.
+ *
+ * Below the width where a sidebar and a diagram both fit there is no seam to
+ * drag and nothing to split, so the panels stop being a column and become a
+ * sheet drawn over the drawing. `main.js` opens the page with them away, which
+ * is the mode `chrome-hidden` above already describes — the switch that clears
+ * the chrome on a desktop is the switch that slides the panels in on a phone,
+ * and there is no second state to keep.
+ */
+@media (max-width: 720px) {
+  #app {
+    grid-template-columns: 1fr;
+  }
+
+  /* Over the diagram rather than beside it, and never quite all of it: the
+     strip left along the right edge is where the switch that shuts it stands,
+     so the sheet always has a way out on screen. */
+  #sidebar {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 4;
+    width: min(82vw, var(--sidebar-width));
+    box-shadow: 0 0 16px var(--shadow);
+  }
+
+  /* Nothing to widen when the panels are not a column, and a nine-pixel strip
+     is not something a finger could find in any case. */
+  #sidebar-resize {
+    display: none;
+  }
+
+  /* Safari zooms the whole page in when a field below this size takes focus,
+     and never zooms back out — so a tap in the search box would leave the
+     diagram half off screen. */
+  input[type="text"],
+  input[type="search"],
+  select {
+    font-size: 16px;
+  }
+}
+
+/* Hover is a mouse's answer to "what is this row for", and a touchscreen has
+   none: the tools a row only draws under the pointer would be unreachable.
+   Both halves are asked for, because a headless browser reports no hover while
+   pointing as precisely as any mouse — and the screenshot in the README is
+   taken by one. */
+@media (hover: none) and (pointer: coarse) {
+  .module-row .row-tools {
+    opacity: 1;
+  }
+}
+
+/* A finger is not a cursor. The squares the icons sit in grow to something it
+   can land on — the toolbar's and the two floating over the diagram alike, so
+   they stay a set — and the rows of the module tree with them. */
+@media (pointer: coarse) {
+  #toolbar .menu-open,
+  #toolbar button.icon,
+  #canvas-switches button {
+    width: 34px;
+    height: 34px;
+  }
+
+  #toolbar .menu-items button {
+    min-height: 32px;
+  }
+
+  /* Still no vertical padding: the guide lines run from row to row, and a gap
+     between them reads as a list of dashes rather than as a tree. */
+  .module-row {
+    min-height: 32px;
+  }
+
+  .module-row input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+  }
+
+  .module-row .row-tools button {
+    min-width: 26px;
+  }
 }

@@ -165,6 +165,37 @@ the page and look at it — see *Checking the viewer* below.
   used to do, quietly ate every click in the diagram: selecting a node stopped
   working. Capture belongs after the pointer has travelled `DRAG_SLOP`, which
   is the point where a press is a drag and no longer a click.
+- **Every gesture is a pointer gesture, which is why a phone needs no second
+  code path.** One pointer down and moving pans, whether it is a mouse or a
+  finger; two fingers pinch; and a double tap that slides zooms the way a thumb
+  can on its own — a *double-tap drag*, or one-finger zoom, or "quick scale",
+  depending on whose name for it you read. All three are the wheel's zoom asked
+  for differently, and all three call `zoomTo` in `panzoom.js`, which holds one
+  user point under the cursor, under the middle of two fingers, or under the
+  place that was tapped. The pinch has to be arithmetic rather than the
+  browser's own because `touch-action: none`, which is what stops a drag across
+  the diagram from scrolling the page, takes both gestures away together.
+  Each is measured against where it started rather than against the last frame,
+  so nothing accumulates; a second finger abandons the pan the first had begun
+  rather than panning and scaling at once; and lifting one finger ends a pinch
+  instead of handing the sheet to the one still down.
+- **A double tap has to stay a double tap until it moves.** Double-clicking an
+  artifact focuses it, and on a touchscreen that is a double tap — the same two
+  taps the zoom begins with. So the slide arms on the second press and engages
+  only after `DRAG_SLOP`, at which point it captures the pointer, and a
+  captured pointer takes its `click` and `dblclick` with it: a zoom never also
+  focuses something, and a double tap that stays put still does. It is touch
+  only, because a mouse has a wheel and a double click that drags already pans.
+- **A window too narrow for both is a window with the panels off the diagram.**
+  Under 720px there is no room to stand a sidebar beside a drawing, so the
+  panels become a sheet over it and the page opens with them away — which is
+  the `chrome-hidden` mode that already existed, so nothing new is stored and
+  the full-screen switch is the same switch. The breakpoint is written twice,
+  in `style.css` and in the `narrow` media query `main.js` asks, and the two
+  have to agree: the stylesheet decides what the sidebar is, and `main.js`
+  decides whether it starts open. The sheet is narrower than the window on
+  purpose — the strip left along the right edge is where the switch that shuts
+  it again stands.
 - **`markdown.js` renders into elements, never into HTML.** Doc comments are
   someone else's text: built as DOM nodes, a comment full of angle brackets is
   a comment full of angle brackets, and there is no escaping to get wrong. Its

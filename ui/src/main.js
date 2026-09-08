@@ -38,6 +38,17 @@ const source =
   document.querySelector('meta[name="portray-source"]')?.getAttribute("content") ?? "api/graph";
 const live = source === "api/graph";
 
+/**
+ * Too narrow to stand the panels beside the diagram.
+ *
+ * The stylesheet turns the sidebar into a sheet over the drawing at the same
+ * width, and the two have to agree: below it the page opens with the panels
+ * out of the way, because a sidebar that covers a phone is a page with no
+ * diagram in it. Which mode the window is in is asked rather than remembered,
+ * like the mode it decides.
+ */
+const narrow = window.matchMedia("(max-width: 720px)");
+
 const store = new Store(readHash());
 /**
  * The light the page is read in, and the light it resolves to.
@@ -68,9 +79,11 @@ let moduleSearch = "";
  * nothing about which artifacts are drawn, so neither goes in the link. They
  * are not standing preferences either — a reader who cleared the chrome to
  * look at one diagram should not find it gone the next time the page opens —
- * so unlike the width they are not written to storage either.
+ * so unlike the width they are not written to storage either. Which is also
+ * why a narrow window can simply start with the panels away: nothing is being
+ * overridden, and one tap brings them in.
  */
-let chromeHidden = false;
+let chromeHidden = narrow.matches;
 let diagramLocked = false;
 let lastDot = "";
 let pending = false;
@@ -327,6 +340,16 @@ const SHACKLE_SHUT = "M8 10V6.5a4 4 0 0 1 8 0V10";
 const SHACKLE_OPEN = "M8 10V6.5a4 4 0 0 1 7.6-1.4";
 const ARROWS_OUT = ["M15 3h6v6", "M14 10l7-7", "M9 21H3v-6", "M10 14l-7 7"];
 const ARROWS_IN = ["M20 10h-6V4", "M14 10l7-7", "M4 14h6v6", "M10 14l-7 7"];
+/**
+ * The same switch on a narrow window, where it is not a full screen at all:
+ * the panels are already off the diagram, and what the button does is slide
+ * them back over it. A pane with a column ruled off it says that; arrows
+ * promising a bigger picture on a page that has nothing else on it do not.
+ */
+const PANELS = [
+  "M4 5h16a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z",
+  "M10 5v14",
+];
 
 /**
  * The two switches that float over the diagram.
@@ -352,13 +375,21 @@ function renderCanvasTools() {
         ? "unlock the diagram: the wheel zooms and a drag pans again"
         : "lock the diagram where it is: the wheel and a drag stop moving it",
     ),
+    // On a narrow window the switch is drawn for what it does there — the
+    // panels come over the diagram rather than the diagram filling the window
+    // — and lights up while they are showing, which is the state a reader on a
+    // phone is looking at the switch to leave.
     toggle(
-      icon(...(chromeHidden ? ARROWS_IN : ARROWS_OUT)),
-      chromeHidden,
+      icon(...(narrow.matches ? PANELS : chromeHidden ? ARROWS_IN : ARROWS_OUT)),
+      narrow.matches ? !chromeHidden : chromeHidden,
       () => setChromeHidden(!chromeHidden),
-      chromeHidden
-        ? "bring the panels back (or press Escape)"
-        : "full screen: hide the panels, leaving the diagram",
+      narrow.matches
+        ? chromeHidden
+          ? "show the panels over the diagram"
+          : "hide the panels"
+        : chromeHidden
+          ? "bring the panels back (or press Escape)"
+          : "full screen: hide the panels, leaving the diagram",
     ),
   );
 }
@@ -529,6 +560,10 @@ async function main() {
     if (closeMenus()) return;
     if (chromeHidden) setChromeHidden(false);
   });
+  // A window dragged past the width where the two stop fitting side by side
+  // has answered the question again: the panels go when there is no room for
+  // them and come back when there is.
+  narrow.addEventListener("change", (event) => setChromeHidden(event.matches));
   // Only while the choice is "system": a reader who asked for one light in
   // particular is not asking to be moved off it at sunset.
   onSystemThemeChange(() => {

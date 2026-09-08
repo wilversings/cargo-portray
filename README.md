@@ -25,6 +25,7 @@ a link you can paste, and the back button undoes a filter change.
 ```sh
 cargo portray <crate-root>                       # the viewer, with live reload
 cargo portray serve  <crate-root> --port 7878
+cargo portray serve  <crate-root> --host 0.0.0.0    # reachable off this machine
 cargo portray emit   <crate-root> -o graph.json --pretty
 cargo portray export <crate-root> -o site
 cargo portray serve  <crate-root> -m parser -m codegen

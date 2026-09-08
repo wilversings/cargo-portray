@@ -21,6 +21,7 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 
 const DEFAULT_PORT: u16 = 7878;
+const DEFAULT_HOST: &str = "127.0.0.1";
 
 #[derive(Parser)]
 #[command(
@@ -50,6 +51,10 @@ struct Cli {
 
     #[arg(short, long, default_value_t = DEFAULT_PORT)]
     port: u16,
+
+    /// Address to bind; `0.0.0.0` to reach the viewer from another machine.
+    #[arg(long, default_value = DEFAULT_HOST)]
+    host: String,
 
     /// Read only this module and what is inside it; repeatable.
     #[arg(short, long = "module", value_name = "PATH")]
@@ -86,6 +91,9 @@ enum Command {
         crate_root: PathBuf,
         #[arg(short, long, default_value_t = DEFAULT_PORT)]
         port: u16,
+        /// Address to bind; `0.0.0.0` to reach the viewer from another machine.
+        #[arg(long, default_value = DEFAULT_HOST)]
+        host: String,
         /// Read only this module and what is inside it, `actions` or
         /// `actions::power`; repeatable. Everything outside is not parsed at
         /// all, so it is as invisible as another crate.
@@ -133,6 +141,7 @@ fn main() -> Result<()> {
     let command = cli.command.unwrap_or(Command::Serve {
         crate_root: cli.crate_root,
         port: cli.port,
+        host: cli.host,
         modules: cli.modules,
         ui: cli.ui,
     });
@@ -165,9 +174,10 @@ fn main() -> Result<()> {
         Command::Serve {
             crate_root,
             port,
+            host,
             modules,
             ui,
-        } => serve::run(&crate_root, port, &extract::Scope::new(&modules)?, ui),
+        } => serve::run(&crate_root, &host, port, &extract::Scope::new(&modules)?, ui),
         Command::Export {
             crate_root,
             out,

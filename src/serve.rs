@@ -15,6 +15,7 @@ use tiny_http::{Header, Request, Response, Server};
 
 pub fn run(
     crate_root: &Path,
+    host: &str,
     port: u16,
     scope: &crate::extract::Scope,
     ui_dir: Option<PathBuf>,
@@ -25,10 +26,17 @@ pub fn run(
     let version = Arc::new(AtomicU64::new(1));
     let _watcher = watch_sources(&crate_root, Arc::clone(&version))?;
 
-    let server = Server::http(("127.0.0.1", port))
-        .map_err(|e| anyhow::anyhow!("could not bind 127.0.0.1:{port}: {e}"))?;
+    let server = Server::http((host, port))
+        .map_err(|e| anyhow::anyhow!("could not bind {host}:{port}: {e}"))?;
+    // A wildcard bind is not an address a browser can open, so point the line
+    // at the loopback the same process is now also listening on.
+    let shown = match host {
+        "0.0.0.0" => "127.0.0.1",
+        "::" => "[::1]",
+        other => other,
+    };
     eprintln!(
-        "portray: http://127.0.0.1:{port}  ({}{})",
+        "portray: http://{shown}:{port}  ({}{})",
         crate_root.display(),
         if scope.is_everything() {
             String::new()
