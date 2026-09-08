@@ -8,6 +8,35 @@
          graph.json, which is the whole of what makes the viewer static. -->
     <meta name="portray-source" content="api/graph" />
     <link rel="icon" href="favicon.svg" />
+    <!--
+      Sets [data-theme] and color-scheme before first paint, for an explicit
+      choice — a host's ?theme= or a reader's saved preference — that
+      disagrees with the operating system. Without this, src/theme.js would
+      not run until after the page has already painted once in the system's
+      light, and switching color-scheme only once style.css has finished
+      loading would still leave a gap, over a real network, where the browser
+      paints its default canvas before either can take hold. Keep this
+      precedence in sync with theme.js's themeFromHost, loadTheme and
+      resolveTheme.
+    -->
+    <script>
+      (function () {
+        try {
+          var theme = new URLSearchParams(window.location.search).get("theme");
+          if (theme !== "light" && theme !== "dark") {
+            theme = localStorage.getItem("portray.theme.v1");
+          }
+          if (theme === "light" || theme === "dark") {
+            document.documentElement.dataset.theme = theme;
+            // The attribute alone only pays off once style.css parses; until
+            // then the browser has nothing telling it which native canvas to
+            // paint, and a stylesheet fetched over a real network is not
+            // instant. Setting color-scheme inline is what closes that gap.
+            document.documentElement.style.colorScheme = theme;
+          }
+        } catch (e) {}
+      })();
+    </script>
     <link rel="stylesheet" href="src/style.css" />
   </head>
   <body>

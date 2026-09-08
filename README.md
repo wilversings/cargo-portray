@@ -1,4 +1,4 @@
-# cargo-portray
+# Cargo Portray
 
 [![License: GPL v3+](https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg)](LICENSE)
 [![Deploy to GitHub Pages](https://github.com/wilversings/cargo-portray/actions/workflows/deploy-pages.yml/badge.svg)](https://github.com/wilversings/cargo-portray/actions/workflows/deploy-pages.yml)

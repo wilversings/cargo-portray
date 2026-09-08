@@ -19,6 +19,7 @@ import {
   onSystemThemeChange,
   resolveTheme,
   saveTheme,
+  themeFromHost,
   THEME_CHOICES,
 } from "./theme.js";
 
@@ -60,7 +61,7 @@ const store = new Store(readHash());
  * and lives in localStorage, and like the sidebar's width it stays out of the
  * link: a view is shared, and the light it is read in is not.
  */
-let themeChoice = loadTheme();
+let themeChoice = themeFromHost() ?? loadTheme();
 let theme = resolveTheme(themeChoice);
 let appearance = loadAppearance(theme);
 /** @type {import("./model.js").Graph} */

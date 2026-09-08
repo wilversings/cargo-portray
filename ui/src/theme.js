@@ -10,8 +10,14 @@
 //
 // The stylesheet is the other half of this: its tokens are `light-dark()`
 // pairs under `color-scheme`, so before this module has run the browser has
-// already painted the page in the operating system's light. That is why there
-// is no inline script in `index.html` and no flash of the wrong colours.
+// already painted the page in the operating system's light — which is enough
+// for a plain visit, since the system's light is what it would have opened in
+// anyway. A saved choice or a host's `?theme=` can disagree with the system,
+// though, and there `index.html` carries a small inline script that sets both
+// [data-theme] and color-scheme (see `themeFromHost`) before style.css has
+// even been requested, let alone parsed — the same precedence this module
+// applies, just early enough that a slow fetch of the stylesheet cannot open
+// the page in the wrong light for the gap in between.
 
 const STORAGE_KEY = "portray.theme.v1";
 
@@ -45,6 +51,26 @@ export function saveTheme(choice) {
   } catch {
     // Private browsing, a full quota — the choice just will not persist.
   }
+}
+
+/**
+ * An explicit theme dictated by the page embedding this one — `?theme=light`
+ * or `?theme=dark` in the URL, the same convention climat's playground embed
+ * answers to. A resume or portfolio page that keeps its own light/dark toggle
+ * passes its current theme this way so the viewer opens already matching it,
+ * rather than in whatever the reader's operating system or a stale stored
+ * choice would otherwise produce.
+ *
+ * Takes precedence over {@link loadTheme} but is never itself persisted: the
+ * host is asking for this one page load, not overwriting what the reader
+ * chose for the times they open the tool directly. See the inline script in
+ * `index.html`, which applies this same precedence before first paint.
+ *
+ * @returns {Theme|null}
+ */
+export function themeFromHost() {
+  const value = new URLSearchParams(window.location.search).get("theme");
+  return value === "light" || value === "dark" ? value : null;
 }
 
 function systemPrefersDark() {
