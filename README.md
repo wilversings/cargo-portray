@@ -67,9 +67,9 @@ python3 -m http.server --directory site     # not file://, browsers block the JS
 The model lands beside the page as `graph.json` and one `<meta>` tag in
 `index.html` points at it; everything else is copied byte for byte. The hosted
 viewer *is* the local one — every filter, the module tree, the colour pickers,
-the DOT/SVG/PNG buttons — because all of that always ran in the browser. The one
-thing it cannot do is notice a source file changing. About a megabyte all in,
-most of it Graphviz.
+the light/dark switch, the DOT/SVG/PNG buttons — because all of that always ran
+in the browser. The one thing it cannot do is notice a source file changing.
+About a megabyte all in, most of it Graphviz.
 
 For GitHub Pages, with **Settings → Pages → Source** set to *GitHub Actions*:
 

@@ -1,19 +1,62 @@
+/*
+ * Two palettes, one declaration apiece.
+ *
+ * `light-dark()` picks between them by the `color-scheme` in force, and
+ * `theme.js` switches that by naming the theme on this element — so a token is
+ * written once and turns over on an attribute. When nothing has been named the
+ * operating system decides, which is what makes "system" the honest default
+ * and why there is no inline script in `index.html`: the browser has already
+ * painted the page in the right light before a line of the JavaScript has run,
+ * so the dark page never opens white and blinks.
+ *
+ * `color-scheme` is also what dresses everything this stylesheet does not
+ * paint — the scrollbars, the list a `<select>` drops, the swatch in a colour
+ * input — so it is set rather than merely implied.
+ */
 :root {
-  --bg: #f4f5f7;
-  --panel: #ffffff;
-  --line: #d6dae0;
-  --ink: #1f2933;
-  --muted: #67727e;
-  --accent: #d1345b;
+  color-scheme: light dark;
+
+  --bg: light-dark(#f4f5f7, #16191d);
+  --panel: light-dark(#ffffff, #1e2228);
+  --line: light-dark(#d6dae0, #333a43);
+  --ink: light-dark(#1f2933, #e2e6ea);
+  --muted: light-dark(#67727e, #939da8);
+  --accent: light-dark(#d1345b, #ff6b87);
   /* Fainter than a border: a tree's guide lines are structure, not edges. */
-  --tree-line: #dde2e8;
-  --hover: #f1f4f8;
+  --tree-line: light-dark(#dde2e8, #333a43);
+  --hover: light-dark(#f1f4f8, #262c34);
+  /* What a control is drawn on, as against the panel it stands in. */
+  --field: light-dark(#ffffff, #171a1f);
+  --field-hover: light-dark(#eef1f6, #2b323b);
+  /* Set into the page rather than laid on it: signatures, code blocks. */
+  --sunken: light-dark(#f7f8fa, #181c21);
+  --code: light-dark(#f2f4f7, #22272e);
+  --doc: light-dark(#fbfcfd, #1b1f25);
+  --mark: light-dark(#ffe9a8, #6b5510);
+  --solo: light-dark(#fff4e5, #382c17);
+  --solo-line: light-dark(#f2d5ab, #6a5227);
+  --chip: light-dark(rgb(31 41 51 / 6%), rgb(255 255 255 / 9%));
+  --shadow: light-dark(rgb(31 41 51 / 16%), rgb(0 0 0 / 50%));
+  --float: light-dark(rgb(255 255 255 / 92%), rgb(30 34 40 / 92%));
+  /* The sheet the diagram is drawn on. `dot.js` paints the same colour into
+     the graph itself, so a saved SVG carries its own background and a pan off
+     the edge of the drawing does not cross a seam. */
+  --canvas: light-dark(#ffffff, #14171b);
   /* Dragged by the seam between the panels and the diagram, and remembered
      there; `sidebar.js` is the only thing that writes it. */
   --sidebar-width: 320px;
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   font-size: 13px;
   color: var(--ink);
+}
+
+/* A theme that was asked for, as against one that was inherited. */
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
 }
 
 * {
@@ -112,7 +155,7 @@ body {
   min-width: 0;
 }
 
-/* Between what changes the view and what leaves the page. */
+/* Between what changes the view and what does something else with it. */
 #toolbar .divider {
   align-self: stretch;
   width: 1px;
@@ -215,7 +258,7 @@ body {
 .signature {
   margin: 6px 0;
   padding: 6px 8px;
-  background: #f7f8fa;
+  background: var(--sunken);
   border: 1px solid var(--line);
   border-radius: 4px;
   font-size: 12px;
@@ -257,7 +300,7 @@ body {
 .prose code {
   font-family: ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace;
   font-size: 0.92em;
-  background: #f2f4f7;
+  background: var(--code);
   border-radius: 3px;
   padding: 0 3px;
 }
@@ -266,7 +309,7 @@ body {
   margin: 6px 0;
   padding: 6px 8px;
   overflow-x: auto;
-  background: #f7f8fa;
+  background: var(--sunken);
   border: 1px solid var(--line);
   border-radius: 4px;
 }
@@ -304,7 +347,7 @@ body {
   margin: 6px 0;
   padding: 6px 8px;
   border-left: 2px solid var(--line);
-  background: #fbfcfd;
+  background: var(--doc);
 }
 
 .doc-member {
@@ -361,7 +404,7 @@ select {
   padding: 4px 6px;
   border: 1px solid var(--line);
   border-radius: 4px;
-  background: #fff;
+  background: var(--field);
   font: inherit;
   color: inherit;
 }
@@ -370,14 +413,14 @@ button {
   padding: 3px 8px;
   border: 1px solid var(--line);
   border-radius: 4px;
-  background: #fff;
+  background: var(--field);
   font: inherit;
   color: inherit;
   cursor: pointer;
 }
 
 button:hover {
-  background: #eef1f6;
+  background: var(--field-hover);
 }
 
 .row-actions {
@@ -399,7 +442,7 @@ button:hover {
 .module-row mark {
   padding: 0 1px;
   border-radius: 2px;
-  background: #ffe9a8;
+  background: var(--mark);
   color: inherit;
 }
 
@@ -426,8 +469,8 @@ button:hover {
 }
 
 .module-row.solo {
-  background: #fff4e5;
-  box-shadow: inset 0 0 0 1px #f2d5ab;
+  background: var(--solo);
+  box-shadow: inset 0 0 0 1px var(--solo-line);
 }
 
 .module-row.off .module-name {
@@ -553,7 +596,7 @@ button:hover {
   flex: none;
   padding: 0 6px;
   border-radius: 9px;
-  background: rgb(31 41 51 / 6%);
+  background: var(--chip);
   color: var(--muted);
   font-size: 11px;
   line-height: 16px;
@@ -639,7 +682,7 @@ button:hover {
 
 #viewport {
   overflow: hidden;
-  background: #fff;
+  background: var(--canvas);
   min-height: 0;
   /* The diagram is dragged, not read as prose: without this, panning across
      it selects every label it crosses. */
@@ -694,7 +737,7 @@ button:hover {
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 6px;
-  box-shadow: 0 2px 6px rgb(31 41 51 / 16%);
+  box-shadow: 0 2px 6px var(--shadow);
 }
 
 /* `display: flex` outranks `hidden`, as it does for the toolbar itself. */
@@ -710,7 +753,32 @@ button:hover {
 }
 
 #toolbar .menu-items button:hover {
-  background: #eef1f6;
+  background: var(--field-hover);
+}
+
+/* A menu showing which of a set is in force keeps a gutter for the tick, so
+   the labels line up whether or not one is beside them. An errand menu — the
+   three file formats — is not a set, and gets no gutter. */
+#toolbar .menu-items button[role="menuitemradio"] {
+  position: relative;
+  padding-left: 20px;
+}
+
+#toolbar .menu-items button[aria-checked="true"] {
+  color: var(--accent);
+}
+
+/* The same two borders the panel chevron is drawn with, turned into a tick. */
+#toolbar .menu-items button[aria-checked="true"]::before {
+  content: "";
+  position: absolute;
+  left: 8px;
+  top: 6px;
+  width: 4px;
+  height: 8px;
+  border-right: 1.5px solid currentcolor;
+  border-bottom: 1.5px solid currentcolor;
+  transform: rotate(40deg);
 }
 
 #toolbar .menu-open[aria-expanded="true"] {
@@ -735,8 +803,8 @@ button:hover {
 /* Only the switches need lifting off the drawing; the export button already
    has the toolbar's card behind it. */
 #canvas-switches button {
-  background: rgb(255 255 255 / 92%);
-  box-shadow: 0 1px 3px rgb(31 41 51 / 14%);
+  background: var(--float);
+  box-shadow: 0 1px 3px var(--shadow);
 }
 
 /* The shapes are in `icon`; the weight and the colour are here, so a switch

@@ -5,7 +5,7 @@
 // block or trait, struct fields as table rows, and edges that leave from the
 // exact field that creates the dependency.
 
-import { edgeColor, lighten } from "./appearance.js";
+import { DIAGRAM_CHROME, edgeColor, mix } from "./appearance.js";
 
 /** @param {string} text */
 function escapeHtml(text) {
@@ -46,9 +46,6 @@ function entryFor(root, module) {
   }
   return current;
 }
-
-/** Backgrounds cycled by nesting depth so nested modules stay separable. */
-const DEPTH_FILLS = ["#f7f7f9", "#eef1f6", "#e6ebf3", "#dfe6f0"];
 
 /** Kinds drawn as a table with a header row and one row per member. */
 const TABLE_KINDS = new Set(["struct", "enum", "trait", "type_alias"]);
@@ -104,11 +101,15 @@ function keywordFor(node) {
  * @param {import("./filter.js").ViewNode} node
  * @param {boolean} showMembers
  * @param {import("./appearance.js").Appearance} look
+ * @param {import("./theme.js").Theme} theme
  * @param {string} indent
  */
-function renderTableNode(node, showMembers, look, indent) {
-  const headerBg = look.nodeColors[node.kind] ?? "#eeeeee";
-  const bodyBg = lighten(headerBg, 0.72);
+function renderTableNode(node, showMembers, look, theme, indent) {
+  const chrome = DIAGRAM_CHROME[theme];
+  const headerBg = look.nodeColors[node.kind] ?? chrome.depthFills[1];
+  // Towards the sheet the table is on, not towards white: the rows have to
+  // step *away* from the header in whichever direction the page runs.
+  const bodyBg = mix(headerBg, chrome.table, 0.72);
 
   const members = showMembers ? node.members : [];
 
@@ -138,17 +139,18 @@ function renderTableNode(node, showMembers, look, indent) {
 
   const label =
     `<table border="0" cellborder="1" cellspacing="0" cellpadding="4" ` +
-    `bgcolor="#ffffff">${rows.join("")}</table>`;
+    `bgcolor="${chrome.table}">${rows.join("")}</table>`;
   return `${indent}"${escapeId(node.id)}" [shape=plain, label=<${label}>];\n`;
 }
 
 /**
  * @param {import("./filter.js").ViewNode} node
  * @param {import("./appearance.js").Appearance} look
+ * @param {import("./theme.js").Theme} theme
  * @param {string} indent
  */
-function renderPlainNode(node, look, indent) {
-  const fill = look.nodeColors[node.kind] ?? "#d9ead3";
+function renderPlainNode(node, look, theme, indent) {
+  const fill = look.nodeColors[node.kind] ?? DIAGRAM_CHROME[theme].depthFills[1];
   if (node.kind === "module") {
     const count = `${node.contains ?? 0} items`;
     const widest = Math.max(textWidth(node.name, false), textWidth(count, false));
@@ -174,12 +176,13 @@ function renderPlainNode(node, look, indent) {
  * @param {import("./filter.js").ViewNode} node
  * @param {boolean} showMembers
  * @param {import("./appearance.js").Appearance} look
+ * @param {import("./theme.js").Theme} theme
  * @param {string} indent
  */
-function renderNode(node, showMembers, look, indent) {
+function renderNode(node, showMembers, look, theme, indent) {
   return TABLE_KINDS.has(node.kind)
-    ? renderTableNode(node, showMembers, look, indent)
-    : renderPlainNode(node, look, indent);
+    ? renderTableNode(node, showMembers, look, theme, indent)
+    : renderPlainNode(node, look, theme, indent);
 }
 
 /**
@@ -187,10 +190,12 @@ function renderNode(node, showMembers, look, indent) {
  * @param {string[]} path
  * @param {boolean} showMembers
  * @param {import("./appearance.js").Appearance} look
+ * @param {import("./theme.js").Theme} theme
  * @param {number} depth
  * @param {{ value: number }} counter
  */
-function renderModule(tree, path, showMembers, look, depth, counter) {
+function renderModule(tree, path, showMembers, look, theme, depth, counter) {
+  const chrome = DIAGRAM_CHROME[theme];
   const indent = "  ".repeat(depth + 1);
   const inCluster = path.length > 0;
   let out = "";
@@ -200,15 +205,15 @@ function renderModule(tree, path, showMembers, look, depth, counter) {
     const id = `cluster_mod_${sanitize(path.join("_"))}_${counter.value}`;
     out += `${indent}subgraph ${id} {\n`;
     out += `${indent}  label="${escapeHtml(path.join("::"))}";\n`;
-    out += `${indent}  style=filled; color="#b7bec9"; fillcolor="${
-      DEPTH_FILLS[Math.min(depth, DEPTH_FILLS.length - 1)]
+    out += `${indent}  style=filled; color="${chrome.clusterLine}"; fillcolor="${
+      chrome.depthFills[Math.min(depth, chrome.depthFills.length - 1)]
     }";\n`;
   }
 
   const body = "  ".repeat(depth + (inCluster ? 2 : 1));
 
   for (const node of tree.loose) {
-    out += renderNode(node, showMembers, look, body);
+    out += renderNode(node, showMembers, look, theme, body);
   }
 
   for (const [group, members] of [...tree.groups].sort(([a], [b]) => a.localeCompare(b))) {
@@ -216,15 +221,15 @@ function renderModule(tree, path, showMembers, look, depth, counter) {
     const id = `cluster_grp_${sanitize(group)}_${counter.value}`;
     out += `${body}subgraph ${id} {\n`;
     out += `${body}  label="${escapeHtml(group)}";\n`;
-    out += `${body}  style=filled; color="#9fb3c8"; fillcolor="#ffffff"; fontsize=11;\n`;
+    out += `${body}  style=filled; color="${chrome.groupLine}"; fillcolor="${chrome.groupFill}"; fontsize=11;\n`;
     for (const node of members) {
-      out += renderNode(node, showMembers, look, body + "  ");
+      out += renderNode(node, showMembers, look, theme, body + "  ");
     }
     out += `${body}}\n`;
   }
 
   for (const [name, child] of [...tree.children].sort(([a], [b]) => a.localeCompare(b))) {
-    out += renderModule(child, [...path, name], showMembers, look, depth + 1, counter);
+    out += renderModule(child, [...path, name], showMembers, look, theme, depth + 1, counter);
   }
 
   if (inCluster) out += `${indent}}\n`;
@@ -235,12 +240,13 @@ function renderModule(tree, path, showMembers, look, depth, counter) {
  * @param {import("./filter.js").ViewEdge} edge
  * @param {Set<string>} portsDrawn
  * @param {import("./appearance.js").Appearance} look
+ * @param {import("./theme.js").Theme} theme
  * @param {string} indent
  */
-function renderEdge(edge, portsDrawn, look, indent) {
-  const relLook = look.edges[edge.rel] ?? { color: "#333333", arrowhead: "normal" };
+function renderEdge(edge, portsDrawn, look, theme, indent) {
+  const relLook = look.edges[edge.rel] ?? { arrowhead: "normal" };
   const style = look.viaStyles[edge.via] ?? "solid";
-  const color = edgeColor(look, edge);
+  const color = edgeColor(look, edge, theme);
   const attrs = [
     `color="${color}"`,
     `style=${style}`,
@@ -267,8 +273,10 @@ function renderEdge(edge, portsDrawn, look, indent) {
  * @param {import("./filter.js").View} view
  * @param {import("./state.js").FilterState} state
  * @param {import("./appearance.js").Appearance} look
+ * @param {import("./theme.js").Theme} theme
  */
-export function toDot(view, state, look) {
+export function toDot(view, state, look, theme) {
+  const chrome = DIAGRAM_CHROME[theme];
   const root = emptyTree();
   for (const node of view.nodes) {
     const module = entryFor(root, node.module);
@@ -289,19 +297,24 @@ export function toDot(view, state, look) {
     }
   }
 
+  // The sheet is painted rather than left transparent, so that an SVG saved
+  // out of a dark page is still a dark diagram wherever it is opened, and the
+  // ink is named for the same reason: Graphviz's default is black, which on
+  // that sheet is nothing at all.
   let out = "digraph portray {\n";
   out += `  rankdir=${state.rankdir};\n`;
   out += "  compound=true;\n";
   out += "  newrank=true;\n";
-  out += '  graph [fontname="sans-serif", fontsize=13, labeljust="l"];\n';
-  out += '  node  [fontname="sans-serif", fontsize=10];\n';
-  out += '  edge  [fontname="sans-serif", fontsize=9];\n\n';
+  out += `  bgcolor="${chrome.bg}";\n`;
+  out += `  graph [fontname="sans-serif", fontsize=13, labeljust="l", fontcolor="${chrome.ink}"];\n`;
+  out += `  node  [fontname="sans-serif", fontsize=10, fontcolor="${chrome.ink}", color="${chrome.nodeLine}"];\n`;
+  out += `  edge  [fontname="sans-serif", fontsize=9, fontcolor="${chrome.ink}"];\n\n`;
 
-  out += renderModule(root, [], state.showMembers, look, 0, { value: 0 });
+  out += renderModule(root, [], state.showMembers, look, theme, 0, { value: 0 });
 
   out += "\n";
   for (const edge of view.edges) {
-    out += renderEdge(edge, portsDrawn, look, "  ");
+    out += renderEdge(edge, portsDrawn, look, theme, "  ");
   }
   out += "}\n";
   return out;

@@ -173,7 +173,9 @@ the page and look at it — see *Checking the viewer* below.
 - **Filter state lives in the URL hash; appearance lives in localStorage.** A
   view is something you share, so it belongs in the link — and only what
   differs from the defaults goes in, so a plain view has a plain link. A colour
-  scheme is a standing preference, so it does not. Do not move either.
+  scheme is a standing preference, so it does not. Do not move either. The
+  theme is the same kind of thing and goes the same way: the person you send a
+  link to reads it in their own light, not in yours.
 - **The hash is `key=value&key=value`, written to be read.** A link is quoted
   in prose and edited by hand, so `#kinds=struct,enum&depth=2` beats encoded
   JSON: lists are comma-separated, flags are `true`/`false` (a bare key is on),
@@ -227,14 +229,32 @@ the page and look at it — see *Checking the viewer* below.
   the same errand branching at the last step, so `exportControl` in `main.js`
   spends one icon on them and asks which format only once the reader has said
   they want a file — three words in the row would have been three decisions
-  taken before there was a question. The menu is plain DOM with its own local
-  state rather than another display-only flag: it belongs to the toolbar it is
-  built with, and a rebuilt toolbar shutting it is the right answer anyway.
-  What has to be remembered outside it is only how to close it — `closeExport`
-  — because a menu open behind a hidden sidebar, or left holding its
-  outside-click listener after a rebuild, is a menu nobody can reach.
-  `#toolbar .menu-items[hidden]` needs `display: none` spelled out, because
-  `display: flex` outranks what the `hidden` attribute asks for.
+  taken before there was a question. It is built by `menu` in `dom.js`, which
+  the theme control uses too: plain DOM with its own local state rather than
+  another display-only flag, because a menu belongs to the toolbar it is built
+  with and a rebuilt toolbar shutting it is the right answer anyway. What has
+  to be remembered outside any of them is only how to close them —
+  `closeMenus`, which `dom.js` keeps because a menu open behind a hidden
+  sidebar, or left holding its outside-click listener after a rebuild, is a
+  menu nobody can reach. `#toolbar .menu-items[hidden]` needs `display: none`
+  spelled out, because `display: flex` outranks what the `hidden` attribute
+  asks for.
+- **The theme is a choice of three, and two of them are colours.** Light and
+  dark are palettes; "system" is the default and is not a palette at all, so
+  `theme.js` keeps the *choice* and everything that draws asks for the
+  *resolved* one. The stylesheet is the load-bearing half: its tokens are
+  `light-dark()` pairs under `color-scheme`, so the operating system's light is
+  already on the page before a line of JavaScript has run and the dark page
+  never opens white and blinks — which is why there is no inline script in
+  `index.html`, and why a new colour belongs in a token rather than spelled
+  into a rule. What CSS cannot reach is themed in JS instead: `DIAGRAM_CHROME`
+  in `appearance.js` holds the sheet, the ink and the cluster fills the drawing
+  is made of, and the two colours both halves need — the sheet a PNG is
+  exported onto, the outline on a selected node — are read back out of the
+  stylesheet by `cssColor` rather than copied, so a palette cannot go stale
+  beside the other. The reader's own picked colours are stored per theme: one
+  set of them cannot serve both, and colours chosen on white are still there
+  when the dark page is left again.
 - **Full screen and the lock are display-only too, and not even remembered.**
   The two switches floating over the diagram — one hides the sidebar, one pins
   the view so the wheel and a drag stop moving it — change
@@ -323,14 +343,15 @@ obvious in a picture.
 
 | Task | Files |
 |---|---|
-| New edge kind | `Rel` in `src/model.rs` + `ui/src/model.js` (`RELS`, `REL_LABELS`), a default colour in `ui/src/appearance.js`, emit it in `src/extract/visitor.rs`, a fixture test |
-| New artifact kind | `NodeKind` in `src/model.rs` + `ui/src/model.js`, a default colour, and a decision in `dot.js` about whether it draws as a table or a plain node |
+| New edge kind | `Rel` in `src/model.rs` + `ui/src/model.js` (`RELS`, `REL_LABELS`), a default colour **for each theme** in `ui/src/appearance.js`, emit it in `src/extract/visitor.rs`, a fixture test |
+| New artifact kind | `NodeKind` in `src/model.rs` + `ui/src/model.js`, a default colour **for each theme**, and a decision in `dot.js` about whether it draws as a table or a plain node |
 | New type position | an arm in `src/extract/types.rs` with its `Via` stated |
 | New call shape | a `visit_expr_*` hook in `src/extract/visitor.rs` feeding `Callee`, and a resolution rule in `src/extract/calls.rs` |
 | New preset | `presetPanel` in `ui/src/panels/filters.js`, setting kinds and rels together |
 | New markdown syntax | a block rule in `renderMarkdown` or an arm in `inline`, both in `ui/src/markdown.js`, plus a style under `.prose` in `style.css` |
 | New filter | a field on `FilterState` in `ui/src/state.js` (defaults included, so the URL stays short; list- and flag-valued fields go in `LIST_KEYS` or `FLAG_KEYS` so the hash round-trips), the rule in `ui/src/filter.js`, a control in `ui/src/panels/` |
 | New panel | `ui/src/panels/<name>.js`, mounted in `renderSidebar` in `ui/src/main.js` |
+| New colour anywhere | a `light-dark()` token on `:root` in `ui/src/style.css` if the page draws it, an entry in `DIAGRAM_CHROME` in `ui/src/appearance.js` if Graphviz does |
 | New subcommand | a variant in `src/main.rs` plus its own module (and a `--module` scope, like the others) |
 
 ## Known limits

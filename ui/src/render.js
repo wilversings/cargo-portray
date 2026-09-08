@@ -79,8 +79,20 @@ function bindNodes(svg, selected, hooks) {
   }
 }
 
-/** Must match `--accent`: the colour a selected node is outlined in. */
-const SELECT_STROKE = "#d1345b";
+/**
+ * The colour a selected node is outlined in.
+ *
+ * The stylesheet owns it — it is `--accent`, and it turns over with the theme
+ * — so it is handed here rather than copied here, and a second palette cannot
+ * go stale beside the first. The default is only what stands until the page
+ * has read the real one back.
+ */
+let selectStroke = "#d1345b";
+
+/** @param {string} color */
+export function setSelectStroke(color) {
+  selectStroke = color;
+}
 
 /**
  * @param {Element} group
@@ -96,9 +108,9 @@ export function markSelected(group, on) {
       if (!shape.hasAttribute("data-stroke")) {
         shape.setAttribute("data-stroke", shape.getAttribute("stroke") ?? "none");
       }
-      shape.setAttribute("stroke", SELECT_STROKE);
+      shape.setAttribute("stroke", selectStroke);
       shape.setAttribute("stroke-width", "2.5");
-    } else if (shape.getAttribute("stroke") === SELECT_STROKE) {
+    } else if (shape.getAttribute("stroke") === selectStroke) {
       shape.setAttribute("stroke", shape.getAttribute("data-stroke") ?? "#000000");
       shape.removeAttribute("stroke-width");
     }

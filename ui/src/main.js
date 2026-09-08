@@ -1,6 +1,6 @@
 // Wiring: fetch the model, keep the filter state, redraw when either moves.
 
-import { button, h, icon, toggle } from "./dom.js";
+import { button, closeMenus, h, icon, menu, toggle } from "./dom.js";
 import { buildView } from "./filter.js";
 import { toDot } from "./dot.js";
 import { appearancePanel } from "./panels/appearance.js";
@@ -9,9 +9,18 @@ import { artifactPanel, optionsPanel, presetPanel, relationPanel } from "./panel
 import { hiddenPanel } from "./panels/hidden.js";
 import { modulePanel } from "./panels/modules.js";
 import { clearAppearance, defaultAppearance, loadAppearance, saveAppearance } from "./appearance.js";
-import { markSelected, renderInto, resetView, setDiagramLocked } from "./render.js";
+import { markSelected, renderInto, resetView, setDiagramLocked, setSelectStroke } from "./render.js";
 import { attachSidebarResize } from "./sidebar.js";
 import { defaultState, onHashNavigation, readHash, reconcile, Store } from "./state.js";
+import {
+  applyTheme,
+  cssColor,
+  loadTheme,
+  onSystemThemeChange,
+  resolveTheme,
+  saveTheme,
+  THEME_CHOICES,
+} from "./theme.js";
 
 const sidebar = document.getElementById("panels");
 const crateName = document.getElementById("crate-name");
@@ -30,7 +39,19 @@ const source =
 const live = source === "api/graph";
 
 const store = new Store(readHash());
-let appearance = loadAppearance();
+/**
+ * The light the page is read in, and the light it resolves to.
+ *
+ * Two values because "system" is a choice that has no colours of its own: the
+ * menu shows the choice, and everything that draws — the stylesheet's tokens,
+ * the diagram's own sheet and ink, the colours the reader has picked — asks
+ * for the resolved one. Like the sidebar's width it is a standing preference
+ * and lives in localStorage, and like the sidebar's width it stays out of the
+ * link: a view is shared, and the light it is read in is not.
+ */
+let themeChoice = loadTheme();
+let theme = resolveTheme(themeChoice);
+let appearance = loadAppearance(theme);
 /** @type {import("./model.js").Graph} */
 let graph = { crate: "", root: "", scope: [], nodes: [], edges: [] };
 /** @type {string|null} */
@@ -111,7 +132,9 @@ function exportPng() {
     canvas.height = box.height * scale;
     const context = canvas.getContext("2d");
     if (!context) return;
-    context.fillStyle = "#ffffff";
+    // The sheet the diagram was read on, so a picture taken off the dark page
+    // is not a dark drawing on white.
+    context.fillStyle = cssColor("--canvas", "#ffffff");
     context.fillRect(0, 0, canvas.width, canvas.height);
     context.drawImage(image, 0, 0);
     canvas.toBlob((blob) => {
@@ -127,34 +150,28 @@ const EXPORT_TRAY = "M4 15v3.5a1.5 1.5 0 0 0 1.5 1.5h13a1.5 1.5 0 0 0 1.5-1.5V15
 const EXPORT_ARROW = ["M12 3.5v10.5", "M7.5 10l4.5 4 4.5-4"];
 
 /**
- * Shuts the export menu, and says whether there was anything to shut. Replaced
- * every time the toolbar is built; a no-op until there is one.
- */
-let closeExport = () => false;
-
-/**
  * The three file formats, behind one icon.
  *
  * They are a single errand — take the diagram somewhere else — that only
  * branches at the last step, so the row spends one square on them instead of
  * three words, and the choice of format is made after the reader has said they
- * want a file. The menu shuts on the way out of every item, on a click
- * anywhere else, and on Escape.
+ * want a file.
  */
 function exportControl() {
-  const items = h(
-    "div",
-    { class: "menu-items", role: "menu" },
-    ...[
-      /** @type {const} */ ([
-        "DOT",
-        "the Graphviz source this view was laid out from",
-        () => download(`${graph.crate}-deps.dot`, lastDot, "text/vnd.graphviz"),
-      ]),
-      /** @type {const} */ ([
-        "SVG",
-        "the drawing itself, as vectors",
-        () => {
+  return menu(
+    icon(EXPORT_TRAY, ...EXPORT_ARROW),
+    "export",
+    "export the diagram as DOT, SVG or PNG",
+    [
+      {
+        label: "DOT",
+        title: "the Graphviz source this view was laid out from",
+        run: () => download(`${graph.crate}-deps.dot`, lastDot, "text/vnd.graphviz"),
+      },
+      {
+        label: "SVG",
+        title: "the drawing itself, as vectors",
+        run: () => {
           const svg = viewport.querySelector("svg");
           if (!svg) return;
           download(
@@ -163,70 +180,95 @@ function exportControl() {
             "image/svg+xml",
           );
         },
-      ]),
-      /** @type {const} */ (["PNG", "the drawing as a picture, at twice the size", exportPng]),
-    ].map(([label, title, run]) =>
-      h(
-        "button",
-        {
-          type: "button",
-          role: "menuitem",
-          title,
-          onclick: () => {
-            setOpen(false);
-            run();
-          },
-        },
-        label,
-      ),
-    ),
+      },
+      { label: "PNG", title: "the drawing as a picture, at twice the size", run: exportPng },
+    ],
   );
-  items.hidden = true;
+}
 
-  const opener = h(
-    "button",
-    {
-      type: "button",
-      class: "menu-open",
-      "aria-haspopup": "true",
-      "aria-expanded": "false",
-      // Nothing on the button reads as a word, so the name has to be given.
-      "aria-label": "export",
-      title: "export the diagram as DOT, SVG or PNG",
-      onclick: () => setOpen(items.hidden),
-    },
-    icon(EXPORT_TRAY, ...EXPORT_ARROW),
-  );
+/** A sun and a crescent: the light the page is being read in, whichever it is. */
+const SUN = [
+  "M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z",
+  "M12 3v2",
+  "M12 19v2",
+  "M3 12h2",
+  "M19 12h2",
+  "M5.6 5.6l1.4 1.4",
+  "M17 17l1.4 1.4",
+  "M18.4 5.6L17 7",
+  "M7 17l-1.4 1.4",
+];
+const MOON = ["M20.5 14.8A8.5 8.5 0 0 1 9.2 3.5a8.5 8.5 0 1 0 11.3 11.3z"];
 
-  const menu = h("div", { class: "menu" }, opener, items);
-
-  /** @param {PointerEvent} event */
-  function onOutside(event) {
-    if (!menu.contains(/** @type {Node} */ (event.target))) setOpen(false);
-  }
-
-  /** @param {boolean} open */
-  function setOpen(open) {
-    items.hidden = !open;
-    opener.setAttribute("aria-expanded", String(open));
-    // Captured, so a press that lands on the diagram shuts the menu before the
-    // pan it starts gets going.
-    if (open) document.addEventListener("pointerdown", onOutside, true);
-    else document.removeEventListener("pointerdown", onOutside, true);
-  }
-
-  closeExport = () => {
-    const was = !items.hidden;
-    setOpen(false);
-    return was;
+/**
+ * Light, dark, or whatever the machine is set to.
+ *
+ * A drop-down rather than a switch because there are three of them, and the
+ * third is the one worth defaulting to: a reader who has told their operating
+ * system which light they work in has already answered this, and the page
+ * should follow when they change their mind. The button draws the light the
+ * page is *in* rather than the choice that produced it, so "system" still
+ * shows a sun in the morning and a moon at night; which of the three is
+ * chosen is said inside the menu, where there is room to say it.
+ */
+function themeControl() {
+  const labels = {
+    light: ["Light", "always the light page"],
+    dark: ["Dark", "always the dark page"],
+    system: ["System", "follow the operating system's setting"],
   };
+  return menu(
+    icon(...(theme === "dark" ? MOON : SUN)),
+    "theme",
+    `theme: ${labels[themeChoice][0].toLowerCase()}`,
+    THEME_CHOICES.map((choice) => ({
+      label: labels[choice][0],
+      title: labels[choice][1],
+      checked: choice === themeChoice,
+      run: () => setTheme(choice),
+    })),
+  );
+}
 
-  return menu;
+/**
+ * @param {import("./theme.js").ThemeChoice} choice
+ */
+function setTheme(choice) {
+  themeChoice = choice;
+  saveTheme(choice);
+  switchTheme();
+}
+
+/**
+ * Puts the light on the page: the stylesheet's tokens all turn over on the
+ * attribute alone, and what CSS does not reach is set from it here. Does not
+ * redraw — the first call happens before there is anything drawn.
+ */
+function paintTheme() {
+  theme = resolveTheme(themeChoice);
+  applyTheme(themeChoice);
+  // Read back rather than repeated here, so the outline on a selected node
+  // cannot drift from the accent the rest of the page is using.
+  setSelectStroke(cssColor("--accent", "#d1345b"));
+  // The reader's picked colours are this theme's own.
+  appearance = loadAppearance(theme);
+}
+
+/**
+ * The light, and everything drawn in it. The panel's colour pickers are now
+ * showing another theme's colours and the diagram is an SVG that was generated
+ * once, so both are built again rather than recoloured.
+ */
+function switchTheme() {
+  paintTheme();
+  renderToolbar();
+  renderSidebar();
+  void draw();
 }
 
 function renderToolbar() {
-  // The menu about to be thrown away holds a listener on the document.
-  closeExport();
+  // The menus about to be thrown away hold a listener on the document.
+  closeMenus();
   const state = store.get();
   toolbar.replaceChildren(
     h("input", {
@@ -255,11 +297,13 @@ function renderToolbar() {
     ),
     button(icon(...FRAME), resetView, "fit the diagram to the window"),
     button(icon(...UNDO), () => store.update(defaultState()), "back to the default view"),
-    // What the view is against what leaves the page: two different errands,
-    // and a hairline is enough to say so now that the row is only as wide as
-    // what is in it.
+    // Left of the hairline is what changes the view; right of it is what does
+    // something else with it — takes a copy away, or changes the light it is
+    // read in. A hairline is enough to say so now that the row is only as wide
+    // as what is in it.
     h("span", { class: "divider" }),
     exportControl(),
+    themeControl(),
   );
 }
 
@@ -329,9 +373,9 @@ function applyChrome() {
 /** @param {boolean} hidden */
 function setChromeHidden(hidden) {
   chromeHidden = hidden;
-  // The menu goes with the sidebar; left open, it would be waiting there when
+  // The menus go with the sidebar; left open, one would be waiting there when
   // the panels came back.
-  if (hidden) closeExport();
+  if (hidden) closeMenus();
   applyChrome();
 }
 
@@ -366,13 +410,13 @@ function renderSidebar() {
       appearance,
       (change) => {
         appearance = { ...appearance, ...change };
-        saveAppearance(appearance);
+        saveAppearance(theme, appearance);
         renderSidebar();
         void draw();
       },
       () => {
-        clearAppearance();
-        appearance = defaultAppearance();
+        clearAppearance(theme);
+        appearance = defaultAppearance(theme);
         renderSidebar();
         void draw();
       },
@@ -396,7 +440,7 @@ async function draw() {
   try {
     const state = store.get();
     const view = buildView(graph, state);
-    lastDot = toDot(view, state, appearance);
+    lastDot = toDot(view, state, appearance, theme);
 
     if (view.nodes.length === 0) {
       viewport.innerHTML = "";
@@ -478,13 +522,19 @@ async function main() {
 
   attachSidebarResize(document.getElementById("sidebar-resize"));
   // The way out of anything the reader took for a one-way door, innermost
-  // first: the export menu shuts before the panels come back, so one press
-  // undoes one thing.
+  // first: an open menu shuts before the panels come back, so one press undoes
+  // one thing.
   document.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;
-    if (closeExport()) return;
+    if (closeMenus()) return;
     if (chromeHidden) setChromeHidden(false);
   });
+  // Only while the choice is "system": a reader who asked for one light in
+  // particular is not asking to be moved off it at sunset.
+  onSystemThemeChange(() => {
+    if (themeChoice === "system") switchTheme();
+  });
+  paintTheme();
   applyChrome();
   renderToolbar();
   renderSidebar();

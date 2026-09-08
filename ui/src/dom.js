@@ -169,6 +169,113 @@ export function icon(...paths) {
   return svg;
 }
 
+/** @typedef {{ label: string, title: string, checked?: boolean, run: () => void }} MenuItem */
+
+/**
+ * How every open menu shuts itself.
+ *
+ * There is more than one menu in the toolbar, and what has to be remembered
+ * outside any of them is only how to close them: a menu left open behind a
+ * hidden sidebar, or still holding its outside-click listener after the row
+ * was rebuilt, is a menu nobody can reach. Kept in one place so that Escape
+ * and a rebuild reach whichever one is open without either having to know
+ * which menus exist.
+ */
+const openMenus = new Set();
+
+/** Shuts every open menu, and says whether there was one to shut. */
+export function closeMenus() {
+  const any = openMenus.size > 0;
+  for (const close of [...openMenus]) close();
+  return any;
+}
+
+/**
+ * A button that drops a short list of choices under it.
+ *
+ * The button is a drawing, so it spends one square of the row on a set of
+ * choices that would have cost a word each — and the choice is only asked for
+ * once the reader has said they want to make one. An item that carries
+ * `checked` is one of a set the menu is currently showing the state of, and
+ * says so where a screen reader can hear it; one that does not is an errand
+ * that happens and is over.
+ *
+ * The list shuts on the way out of every item, on a press anywhere else, and
+ * on Escape.
+ *
+ * @param {Node} glyph
+ * @param {string} name what the button is, for the tooltip and the screen reader
+ * @param {string} title
+ * @param {MenuItem[]} items
+ */
+export function menu(glyph, name, title, items) {
+  const list = h(
+    "div",
+    { class: "menu-items", role: "menu" },
+    ...items.map((item) =>
+      h(
+        "button",
+        {
+          type: "button",
+          role: item.checked === undefined ? "menuitem" : "menuitemradio",
+          "aria-checked": item.checked === undefined ? null : String(item.checked),
+          title: item.title,
+          onclick: () => {
+            setOpen(false);
+            item.run();
+          },
+        },
+        item.label,
+      ),
+    ),
+  );
+  list.hidden = true;
+
+  const opener = h(
+    "button",
+    {
+      type: "button",
+      class: "menu-open",
+      "aria-haspopup": "true",
+      "aria-expanded": "false",
+      // Nothing on the button reads as a word, so the name has to be given.
+      "aria-label": name,
+      title,
+      onclick: () => setOpen(list.hidden),
+    },
+    glyph,
+  );
+
+  const element = h("div", { class: "menu" }, opener, list);
+
+  /** @param {PointerEvent} event */
+  function onOutside(event) {
+    if (!element.contains(/** @type {Node} */ (event.target))) setOpen(false);
+  }
+
+  /** @param {boolean} open */
+  function setOpen(open) {
+    list.hidden = !open;
+    opener.setAttribute("aria-expanded", String(open));
+    // Captured, so a press that lands on the diagram shuts the menu before the
+    // pan it starts gets going.
+    if (open) {
+      closeMenus();
+      openMenus.add(close);
+      document.addEventListener("pointerdown", onOutside, true);
+    } else {
+      openMenus.delete(close);
+      document.removeEventListener("pointerdown", onOutside, true);
+    }
+  }
+
+  function close() {
+    setOpen(false);
+  }
+
+  return element;
+}
+
 /**
  * @param {string} value
  * @param {string[]} options

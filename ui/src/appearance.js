@@ -3,12 +3,21 @@
 // Kept out of the filter state and out of the URL on purpose: a colour scheme
 // is a standing preference, not part of the view you share. It lives in
 // localStorage instead.
+//
+// Everything here comes in two, one per theme, because a palette drawn to sit
+// on white cannot sit on black: a pale yellow header is a lamp on a dark page,
+// and a near-black edge is not a line at all. The two are stored separately
+// as well, so colours picked for the light page are still there when the dark
+// one is left again.
 
 import { NODE_KINDS, RELS, VIAS } from "./model.js";
 
-const STORAGE_KEY = "portray.appearance.v1";
+const STORAGE_KEY = "portray.appearance.v2";
+/** The single-theme shape this replaces; read once, as the light palette. */
+const LEGACY_KEY = "portray.appearance.v1";
 
 /**
+ * @typedef {import("./theme.js").Theme} Theme
  * @typedef {{ color: string, arrowhead: string }} EdgeLook
  * @typedef {"relation"|"random"} EdgeColorMode
  * @typedef {{ nodeColors: Record<string, string>,
@@ -17,30 +26,105 @@ const STORAGE_KEY = "portray.appearance.v1";
  *   edgeColors: EdgeColorMode }} Appearance
  */
 
-/** @returns {Appearance} */
-export function defaultAppearance() {
+/** @type {Record<Theme, Record<string, string>>} */
+const NODE_COLORS = {
+  light: {
+    struct: "#ffe08a",
+    enum: "#d5c3f0",
+    trait: "#a8dadc",
+    type_alias: "#d9d9d9",
+    const: "#f0f0f0",
+    fn: "#d9ead3",
+    inherent_method: "#cfe8c6",
+    trait_method: "#e2f0d9",
+    impl_method: "#c3e0b8",
+    module: "#dbe5f1",
+  },
+  // The same hues, taken down to where the page's own ink reads on top of
+  // them, and kept apart from each other by the same amount they were.
+  dark: {
+    struct: "#6e5514",
+    enum: "#4a3d70",
+    trait: "#1f5257",
+    type_alias: "#45484c",
+    const: "#3a3d42",
+    fn: "#33502e",
+    inherent_method: "#2d4a28",
+    trait_method: "#3a5734",
+    impl_method: "#274423",
+    module: "#2f4260",
+  },
+};
+
+/** @type {Record<Theme, Record<string, EdgeLook>>} */
+const EDGE_LOOKS = {
+  light: {
+    field: { color: "#3c78d8", arrowhead: "diamond" },
+    param: { color: "#333333", arrowhead: "normal" },
+    return: { color: "#8a8a8a", arrowhead: "normal" },
+    impls: { color: "#b45f06", arrowhead: "onormal" },
+    supertrait: { color: "#6a329f", arrowhead: "onormal" },
+    bound: { color: "#38761d", arrowhead: "vee" },
+    call: { color: "#a61c3c", arrowhead: "vee" },
+  },
+  // Arrowheads are the relation as much as the colours are, so only the
+  // colours turn over: each one lifted to where a hairline of it is still a
+  // line once the page behind it is dark.
+  dark: {
+    field: { color: "#6fa8ff", arrowhead: "diamond" },
+    param: { color: "#c3cad3", arrowhead: "normal" },
+    return: { color: "#8b959f", arrowhead: "normal" },
+    impls: { color: "#e79a3c", arrowhead: "onormal" },
+    supertrait: { color: "#b385e0", arrowhead: "onormal" },
+    bound: { color: "#6fbf50", arrowhead: "vee" },
+    call: { color: "#ff6b87", arrowhead: "vee" },
+  },
+};
+
+/**
+ * The parts of the drawing the reader does not pick: the sheet it is on, the
+ * ink its labels are written in, and the boxes modules and impl blocks are
+ * grouped by. They are not in `Appearance` because they are not choices — a
+ * reset would have nothing to put back, and a saved copy of them would be a
+ * light-mode diagram waiting to reappear on a dark page.
+ *
+ * The light half is black where Graphviz's own default was black — the ink a
+ * label is written in and the line a node is outlined in — because it was
+ * already right and a diagram nobody asked to have restyled should not come
+ * back looking restyled. Only the dark half is new.
+ *
+ * @type {Record<Theme, { bg: string, ink: string, nodeLine: string,
+ *   table: string, clusterLine: string, groupLine: string, groupFill: string,
+ *   depthFills: string[] }>}
+ */
+export const DIAGRAM_CHROME = {
+  light: {
+    bg: "#ffffff",
+    ink: "#000000",
+    nodeLine: "#000000",
+    table: "#ffffff",
+    clusterLine: "#b7bec9",
+    groupLine: "#9fb3c8",
+    groupFill: "#ffffff",
+    depthFills: ["#f7f7f9", "#eef1f6", "#e6ebf3", "#dfe6f0"],
+  },
+  dark: {
+    bg: "#14171b",
+    ink: "#e2e6ea",
+    nodeLine: "#5b6673",
+    table: "#1a1e24",
+    clusterLine: "#4a525d",
+    groupLine: "#5b6673",
+    groupFill: "#1a1e24",
+    depthFills: ["#20242b", "#262c35", "#2c333e", "#333b47"],
+  },
+};
+
+/** @param {Theme} theme @returns {Appearance} */
+export function defaultAppearance(theme) {
   return {
-    nodeColors: {
-      struct: "#ffe08a",
-      enum: "#d5c3f0",
-      trait: "#a8dadc",
-      type_alias: "#d9d9d9",
-      const: "#f0f0f0",
-      fn: "#d9ead3",
-      inherent_method: "#cfe8c6",
-      trait_method: "#e2f0d9",
-      impl_method: "#c3e0b8",
-      module: "#dbe5f1",
-    },
-    edges: {
-      field: { color: "#3c78d8", arrowhead: "diamond" },
-      param: { color: "#333333", arrowhead: "normal" },
-      return: { color: "#8a8a8a", arrowhead: "normal" },
-      impls: { color: "#b45f06", arrowhead: "onormal" },
-      supertrait: { color: "#6a329f", arrowhead: "onormal" },
-      bound: { color: "#38761d", arrowhead: "vee" },
-      call: { color: "#a61c3c", arrowhead: "vee" },
-    },
+    nodeColors: { ...NODE_COLORS[theme] },
+    edges: structuredClone(EDGE_LOOKS[theme]),
     viaStyles: {
       direct: "solid",
       generic: "dashed",
@@ -53,56 +137,86 @@ export function defaultAppearance() {
 export const ARROWHEADS = ["normal", "vee", "diamond", "odiamond", "onormal", "dot", "none"];
 export const LINE_STYLES = ["solid", "dashed", "dotted", "bold"];
 
-/** @returns {Appearance} */
-export function loadAppearance() {
-  const base = defaultAppearance();
+/** @returns {Record<string, unknown>} whatever this browser has stored, by theme */
+function readStore() {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return base;
-    const saved = JSON.parse(raw);
-    return {
-      nodeColors: { ...base.nodeColors, ...(saved.nodeColors ?? {}) },
-      edges: { ...base.edges, ...(saved.edges ?? {}) },
-      viaStyles: { ...base.viaStyles, ...(saved.viaStyles ?? {}) },
-      edgeColors: saved.edgeColors === "random" ? "random" : base.edgeColors,
-    };
+    if (raw) return JSON.parse(raw) ?? {};
+    // Colours picked before there was a second theme were picked on white.
+    const legacy = window.localStorage.getItem(LEGACY_KEY);
+    return legacy ? { light: JSON.parse(legacy) } : {};
   } catch {
-    return base;
+    return {};
   }
 }
 
-/** @param {Appearance} appearance */
-export function saveAppearance(appearance) {
+/** @param {Record<string, unknown>} store */
+function writeStore(store) {
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(appearance));
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
   } catch {
     // Private browsing, a full quota — the colours just will not persist.
   }
 }
 
-export function clearAppearance() {
-  try {
-    window.localStorage.removeItem(STORAGE_KEY);
-  } catch {
-    // Nothing to do; the defaults are already what is in memory.
-  }
+/** @param {Theme} theme @returns {Appearance} */
+export function loadAppearance(theme) {
+  const base = defaultAppearance(theme);
+  const saved = readStore()[theme];
+  if (!saved || typeof saved !== "object") return base;
+  const kept = /** @type {Partial<Appearance>} */ (saved);
+  return {
+    nodeColors: { ...base.nodeColors, ...(kept.nodeColors ?? {}) },
+    edges: { ...base.edges, ...(kept.edges ?? {}) },
+    viaStyles: { ...base.viaStyles, ...(kept.viaStyles ?? {}) },
+    edgeColors: kept.edgeColors === "random" ? "random" : base.edgeColors,
+  };
+}
+
+/** @param {Theme} theme @param {Appearance} appearance */
+export function saveAppearance(theme, appearance) {
+  writeStore({ ...readStore(), [theme]: appearance });
+}
+
+/** @param {Theme} theme */
+export function clearAppearance(theme) {
+  const store = readStore();
+  delete store[theme];
+  writeStore(store);
 }
 
 /**
- * The pale companion of a header colour, used for the rows of a type table so
- * one picked colour is enough to restyle a whole node.
+ * Two colours blended, which is how a node's rows are tinted from its header:
+ * one picked colour restyles the whole table, and it works either way up
+ * because the colour being mixed *towards* is the sheet the diagram is on —
+ * white on the light page, near-black on the dark one.
+ *
  * @param {string} hex
- * @param {number} amount 0 keeps the colour, 1 turns it white
+ * @param {string} towards
+ * @param {number} amount 0 keeps the colour, 1 reaches `towards`
  */
-export function lighten(hex, amount) {
+export function mix(hex, towards, amount) {
+  const from = channels(hex);
+  const to = channels(towards);
+  if (!from || !to) return hex;
+  return (
+    "#" +
+    from
+      .map((channel, i) =>
+        Math.round(channel + (to[i] - channel) * amount)
+          .toString(16)
+          .padStart(2, "0"),
+      )
+      .join("")
+  );
+}
+
+/** @param {string} hex @returns {[number, number, number]|null} */
+function channels(hex) {
   const match = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
-  if (!match) return hex;
+  if (!match) return null;
   const value = parseInt(match[1], 16);
-  const mix = (channel) => Math.round(channel + (255 - channel) * amount);
-  const r = mix((value >> 16) & 0xff);
-  const g = mix((value >> 8) & 0xff);
-  const b = mix(value & 0xff);
-  return "#" + [r, g, b].map((c) => c.toString(16).padStart(2, "0")).join("");
+  return [(value >> 16) & 0xff, (value >> 8) & 0xff, value & 0xff];
 }
 
 /**
@@ -160,15 +274,18 @@ function hslToHex(hue, sat, light) {
  *
  * @param {Appearance} look
  * @param {import("./filter.js").ViewEdge} edge
+ * @param {Theme} theme
  */
-export function edgeColor(look, edge) {
-  const relColor = look.edges[edge.rel]?.color ?? "#333333";
+export function edgeColor(look, edge, theme) {
+  const relColor = look.edges[edge.rel]?.color ?? DIAGRAM_CHROME[theme].ink;
   if (look.edgeColors !== "random") return relColor;
   const key = [edge.from, edge.fromPort ?? "", edge.to, edge.rel].join("\u0000");
   const hash = hashOf(key);
-  // Kept dark and saturated: these are hairlines on white, and a pale one is
-  // not a line the reader can follow.
-  return hslToHex(hash % 360, 58 + ((hash >>> 9) % 30), 31 + ((hash >>> 17) % 14));
+  // Kept clear of the sheet it is drawn on: these are hairlines, and one at
+  // the background's own lightness is not a line the reader can follow —
+  // which means dark and saturated on white, and pale on black.
+  const light = theme === "dark" ? 60 + ((hash >>> 17) % 15) : 31 + ((hash >>> 17) % 14);
+  return hslToHex(hash % 360, 58 + ((hash >>> 9) % 30), light);
 }
 
 /** Names of everything that can be recoloured, for building the panel. */

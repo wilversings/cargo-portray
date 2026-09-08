@@ -94,6 +94,10 @@ export function appearancePanel(look, onChange, onReset) {
     h("h3", {}, "line style, by how the type was reached"),
     ...viaRows,
     h("div", { class: "row-actions" }, button("reset to defaults", onReset)),
-    h("p", { class: "hint" }, "Kept in this browser, not in the shareable link."),
+    h(
+      "p",
+      { class: "hint" },
+      "Kept in this browser, one set per theme, and never in the shareable link.",
+    ),
   );
 }
