@@ -89,11 +89,23 @@ export function resolveTheme(choice) {
  * control and every scrollbar — is switched by. "System" names nothing, so
  * the media query stays in charge and the page keeps following the machine.
  *
+ * Also sets `color-scheme` inline, matching the attribute, because
+ * `index.html`'s pre-paint script sets that same inline style to close the
+ * flash before style.css has loaded — see the note there. An inline style
+ * beats a stylesheet rule regardless of specificity, so once that script has
+ * run, leaving the inline style stale here would mean this function silently
+ * stopped switching anything.
+ *
  * @param {ThemeChoice} choice
  */
 export function applyTheme(choice) {
-  if (choice === "system") delete document.documentElement.dataset.theme;
-  else document.documentElement.dataset.theme = choice;
+  if (choice === "system") {
+    delete document.documentElement.dataset.theme;
+    document.documentElement.style.colorScheme = "";
+  } else {
+    document.documentElement.dataset.theme = choice;
+    document.documentElement.style.colorScheme = choice;
+  }
 }
 
 /**
