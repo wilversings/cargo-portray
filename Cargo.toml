@@ -13,6 +13,12 @@ publish = false
 
 readme = "README.md"
 repository = "https://github.com/wilversings/cargo-portray"
+keywords = ["dependency-graph", "cargo-plugin", "visualization", "call-graph"]
+categories = ["development-tools::cargo-plugins", "visualization"]
+
+# assets/, scripts/, AGENTS.md are dev-only; ui/ ships because src/ui.rs
+# resolves it at runtime via CARGO_MANIFEST_DIR.
+exclude = ["assets/", "scripts/", "AGENTS.md"]
 
 # Deliberately detached from the konductord package above it. This is dev
 # tooling: it must not appear in the daemon's Cargo.lock, must not be dragged
