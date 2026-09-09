@@ -3,6 +3,7 @@
 import { button, closeMenus, h, icon, menu, toggle } from "./dom.js";
 import { buildView } from "./filter.js";
 import { toDot } from "./dot.js";
+import { toPlantUml } from "./plantuml.js";
 import { appearancePanel } from "./panels/appearance.js";
 import { detailsPanel } from "./panels/details.js";
 import { artifactPanel, optionsPanel, presetPanel, relationPanel } from "./panels/filters.js";
@@ -32,8 +33,9 @@ const statusLine = document.getElementById("status");
 
 /**
  * `api/graph` when there is a server behind the page, a plain file when this
- * is a static export — in which case nothing can change under us and there is
- * nothing to poll.
+ * is a static export, and `inline` when the export was folded into one file
+ * and the model is in the page itself — in which case, either way, nothing
+ * can change under us and there is nothing to poll.
  */
 const source =
   document.querySelector('meta[name="portray-source"]')?.getAttribute("content") ?? "api/graph";
@@ -87,17 +89,47 @@ let moduleSearch = "";
 let chromeHidden = narrow.matches;
 let diagramLocked = false;
 let lastDot = "";
+/**
+ * The view the last DOT was generated from, and the state it was filtered by.
+ *
+ * Kept beside `lastDot` for the exports that write their own text out of the
+ * view rather than out of the DOT: what leaves the page has to be the diagram
+ * on it, not whatever the filters have been moved to since.
+ *
+ * @type {import("./filter.js").View|null}
+ */
+let lastView = null;
+/** @type {import("./state.js").FilterState|null} */
+let lastState = null;
 let pending = false;
 /** Set when the loaded view mentioned things this crate does not have. */
 let notice = "";
 
+/**
+ * The model, from wherever this page keeps it.
+ *
+ * A one-file export has nothing beside it to fetch — a `file://` page cannot
+ * fetch a sibling anyway — so the export writes the model into a `<script>`
+ * and the page reads it out of its own DOM.
+ */
+async function readModel() {
+  if (source !== "inline") {
+    const response = await fetch(source);
+    if (!response.ok) throw new Error(String(response.status));
+    return response.json();
+  }
+  const embedded = document.getElementById("portray-model");
+  if (!embedded) throw new Error("this page says it carries its model, and does not");
+  return JSON.parse(embedded.textContent ?? "");
+}
+
 async function loadGraph() {
-  const response = await fetch(source);
-  if (!response.ok) {
-    statusLine.textContent = `could not load the model: ${response.status}`;
+  try {
+    graph = await readModel();
+  } catch (error) {
+    statusLine.textContent = `could not load the model: ${error.message}`;
     return;
   }
-  graph = await response.json();
   // A scoped run read part of a crate, and a page that did not say so would
   // read as a whole crate with things missing.
   const scope = graph.scope?.length ? ` · ${graph.scope.join(", ")}` : "";
@@ -175,12 +207,24 @@ function exportControl() {
   return menu(
     icon(EXPORT_TRAY, ...EXPORT_ARROW),
     "export",
-    "export the diagram as DOT, SVG or PNG",
+    "export the diagram as DOT, PlantUML, SVG or PNG",
     [
       {
         label: "DOT",
         title: "the Graphviz source this view was laid out from",
         run: () => download(`${graph.crate}-deps.dot`, lastDot, "text/vnd.graphviz"),
+      },
+      {
+        label: "PlantUML",
+        title: "the same view as a PlantUML class diagram, to render or hand-edit",
+        run: () => {
+          if (!lastView || !lastState) return;
+          download(
+            `${graph.crate}-deps.puml`,
+            toPlantUml(lastView, lastState, appearance, theme, graph.crate),
+            "text/plain;charset=utf-8",
+          );
+        },
       },
       {
         label: "SVG",
@@ -473,6 +517,8 @@ async function draw() {
     const state = store.get();
     const view = buildView(graph, state);
     lastDot = toDot(view, state, appearance, theme);
+    lastView = view;
+    lastState = state;
 
     if (view.nodes.length === 0) {
       viewport.innerHTML = "";

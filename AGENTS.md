@@ -34,11 +34,12 @@ invariants below exist to keep that seam clean.
 ## Build and test
 
 ```sh
-cargo test                                  # 29 tests, all must pass
+cargo test                                  # 50 tests, all must pass
 cargo clippy --all-targets -- -D warnings
 cargo fmt --all
 cargo run -- serve .                        # the viewer, on 127.0.0.1:7878
 cargo run -- export . -o site               # the same viewer, as a static site
+cargo run -- export . -o portray.html       # and as one file, openable from disk
 cargo run -- serve . -m extract             # one module of it, and nothing else
 ```
 
@@ -80,10 +81,18 @@ the page and look at it — see *Checking the viewer* below.
    edge points at them. Keep it that way. A second knob that trimmed the
    *output* while still reading everything would be a filter in Rust, and
    belongs in `ui/` instead.
-4. **The served page and the exported page are the same files.** `export`
-   copies `ui/` byte for byte and rewrites exactly one `<meta>` tag, so a bug
-   can never exist in only one of them. Do not add a second entry point, a
-   template, or a build-time substitution.
+4. **There is one viewer, and `ui/` is it.** The site export copies `ui/` byte
+   for byte and rewrites exactly one `<meta>` tag, so a bug can never exist in
+   only one of them. The one-file export cannot copy — a browser will not load
+   an ES module or fetch a sibling from a `file://` page — so it folds those
+   same files together instead, and the rule that replaces "same bytes" is
+   that it is **derived, mechanically, and knows no filenames**: `src/inline.rs`
+   reads whatever the page happens to reference and follows it, so renaming
+   anything under `ui/` needs no edit there. What stays forbidden is a second
+   *copy*: no alternate `index.html`, no template, no hand-maintained bundle,
+   nothing a page can carry that the served viewer does not. Both exports stop
+   with a sentence when the page stops holding what they need, rather than
+   writing out something half done.
 5. **No `unwrap()` or `expect()` outside `#[cfg(test)]`.** A tool pointed at an
    unfamiliar crate meets malformed files, missing directories and syntax it
    has never seen; it should say so in a sentence, not print a backtrace. Use
@@ -256,11 +265,14 @@ the page and look at it — see *Checking the viewer* below.
   moves the drawing goes in the switches. A strip across the top of the window
   is still not on offer — that was what the drawer this row replaced was
   avoiding, and the sidebar already had the width to spend.
-- **The three file formats are one control, not three.** DOT, SVG and PNG are
-  the same errand branching at the last step, so `exportControl` in `main.js`
-  spends one icon on them and asks which format only once the reader has said
-  they want a file — three words in the row would have been three decisions
-  taken before there was a question. It is built by `menu` in `dom.js`, which
+- **The file formats are one control, not four.** DOT, PlantUML, SVG and PNG
+  are the same errand branching at the last step, so `exportControl` in
+  `main.js` spends one icon on them and asks which format only once the reader
+  has said they want a file — four words in the row would have been four
+  decisions taken before there was a question. What leaves the page is the view
+  that is *on* it: the text formats are written from `lastView`/`lastState`,
+  which is the view the last DOT was laid out from, not from wherever the
+  filters have been moved to since. It is built by `menu` in `dom.js`, which
   the theme control uses too: plain DOM with its own local state rather than
   another display-only flag, because a menu belongs to the toolbar it is built
   with and a rebuilt toolbar shutting it is the right answer anyway. What has
@@ -270,6 +282,17 @@ the page and look at it — see *Checking the viewer* below.
   menu nobody can reach. `#toolbar .menu-items[hidden]` needs `display: none`
   spelled out, because `display: flex` outranks what the `hidden` attribute
   asks for.
+- **PlantUML is a second drawing of the same view, not a second model.**
+  `ui/src/plantuml.js` walks the tree `ui/src/tree.js` builds, exactly as
+  `dot.js` does, and gives up three things the language cannot hold: ports, so
+  an edge that left a field row leaves the struct and carries that field's name
+  as its label; arrowheads, so every relation is drawn alike and is named by
+  its colour plus a word on the line; and braces, so an enum's struct-variant
+  payload is shown in parentheses — a `}` in a class body can end the body.
+  Everything else survives, colours the reader picked included. Keep the output
+  deterministic: no dates, nothing random, so a `.puml` committed beside a
+  design note has a diff worth reading. A change here is checked by rendering
+  it, not by reading it — see below.
 - **The theme is a choice of three, and two of them are colours.** Light and
   dark are palettes; "system" is the default and is not a palette at all, so
   `theme.js` keeps the *choice* and everything that draws asks for the
@@ -325,7 +348,33 @@ the page and look at it — see *Checking the viewer* below.
   the page reloads forever.
 - **`export` never deletes.** It writes into an empty directory or over a
   previous export, and refuses anything else. Working out which files in a
-  stranger's directory were probably ours is not a guess worth making.
+  stranger's directory were probably ours is not a guess worth making. A page
+  is aimed more easily than a directory is, so `-o something.html` is held to
+  the same rule by the `<meta>` a previous export left in it.
+- **The output's name decides which export it is.** A site is a directory and a
+  page is a file, so `-o site` and `-o portray.html` already say which is
+  wanted; a flag would only be a second way to say it.
+- **The one-file export is a bundler, and reads a subset of ES modules on
+  purpose.** `src/inline.rs` takes named, default, namespace and side-effect
+  imports from relative paths, and exports that are declarations, a clause, a
+  re-export or a default. It does not take `export let`, `export var` or
+  `export *`: the first two because an importer reads a binding once, so a
+  later reassignment would never reach it, and a quietly stale copy is worse
+  than a refusal. Anything it cannot read stops the export with the line in the
+  message. Do not widen this by guessing — a bundler that mis-reads syntax
+  produces a page that loads and then misbehaves, which is the failure this is
+  written to avoid. Cycles are refused for the same reason: the modules go into
+  the file in evaluation order, and a cycle has none.
+- **The bundled page must draw the same picture as the served one.** There is
+  no assertion that can say so; run both under node and compare, which is
+  cheap because the bundle exposes its registry:
+
+  ```sh
+  cargo portray export . -o /tmp/one.html
+  # lift the module script out of the page, append `export const registry = __modules;`
+  # then generate DOT from `registry["src/dot.js"]` and from ./ui/src/dot.js
+  # over the same graph.json, and diff. They are byte-identical or something broke.
+  ```
 
 ## Conventions
 
@@ -357,6 +406,12 @@ visibly. Two things work:
 # The modules are plain ESM, so filtering and DOT generation run under node.
 node --input-type=module -e 'import { buildView } from "./ui/src/filter.js"; …'
 
+# PlantUML has an answer of its own: -checkonly is a real check — it exits 200
+# on a file it cannot parse — and rendering one is how the colours, the nested
+# packages and the member rows get looked at. No JRE here, hence the container.
+podman run --rm -v "$PWD":/w:z -w /w docker.io/library/eclipse-temurin:21-jre-jammy \
+  java -Djava.awt.headless=true -jar plantuml.jar -checkonly -Playout=smetana out.puml
+
 # And a headless Chromium renders the real page, DOM and all.
 chromium --headless=new --disable-gpu --virtual-time-budget=25000 \
   --dump-dom http://127.0.0.1:7878/
@@ -384,6 +439,8 @@ obvious in a picture.
 | New panel | `ui/src/panels/<name>.js`, mounted in `renderSidebar` in `ui/src/main.js` |
 | New colour anywhere | a `light-dark()` token on `:root` in `ui/src/style.css` if the page draws it, an entry in `DIAGRAM_CHROME` in `ui/src/appearance.js` if Graphviz does |
 | New subcommand | a variant in `src/main.rs` plus its own module (and a `--module` scope, like the others) |
+| New export format | `ui/src/<format>.js` walking `buildTree` from `ui/src/tree.js`, an item in `exportControl` in `ui/src/main.js`, and a render of the output looked at before it ships |
+| New thing the page loads | nothing: `src/inline.rs` follows `<link>`, `<script>` and `<img>` by itself, and CSS `@import` and `url()` with them. A *new kind* of reference needs an arm in `fold` |
 
 ## Known limits
 

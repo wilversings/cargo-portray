@@ -2,13 +2,15 @@
 //!
 //! `emit` writes the graph model as JSON; `serve` hosts the interactive
 //! viewer, which does all the filtering and draws the diagram itself; `export`
-//! writes that same viewer out as a static site.
+//! writes that same viewer out as a static site, or as a single page when the
+//! output is named like one.
 //!
 //! Nothing here is specific to the crate it lives in: point it at any Rust
 //! crate root.
 
 mod export;
 mod extract;
+mod inline;
 mod model;
 mod par;
 mod resolve;
@@ -35,6 +37,7 @@ const DEFAULT_HOST: &str = "127.0.0.1";
                   cargo portray serve ~/src/mycrate\n  \
                   cargo portray emit . -o graph.json\n  \
                   cargo portray export . -o site\n  \
+                  cargo portray export . -o portray.html   (one file, opens from disk)\n  \
                   cargo portray serve . -m actions   (read one module of a huge crate)\n\n\
                   From a checkout of this crate, run it through cargo with a `--` \
                   separator, which is what tells cargo the rest is not for it:\n  \
@@ -103,12 +106,14 @@ enum Command {
         #[arg(long)]
         ui: Option<PathBuf>,
     },
-    /// Write the viewer out as a static site, model included.
+    /// Write the viewer out as a static site, or one page, model included.
     Export {
         /// Crate root (the directory holding Cargo.toml and src/).
         #[arg(default_value = ".")]
         crate_root: PathBuf,
-        /// Directory to write the site into; created if it does not exist.
+        /// Where to write. A directory gets the site; a name ending in
+        /// `.html` gets the whole viewer folded into that one file, which
+        /// opens from disk with no server.
         #[arg(short, long, default_value = "site")]
         out: PathBuf,
         /// Read only this module and what is inside it, `actions` or
@@ -177,7 +182,13 @@ fn main() -> Result<()> {
             host,
             modules,
             ui,
-        } => serve::run(&crate_root, &host, port, &extract::Scope::new(&modules)?, ui),
+        } => serve::run(
+            &crate_root,
+            &host,
+            port,
+            &extract::Scope::new(&modules)?,
+            ui,
+        ),
         Command::Export {
             crate_root,
             out,

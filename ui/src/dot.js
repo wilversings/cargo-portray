@@ -6,6 +6,7 @@
 // exact field that creates the dependency.
 
 import { DIAGRAM_CHROME, edgeColor, mix } from "./appearance.js";
+import { buildTree, sanitize } from "./tree.js";
 
 /** @param {string} text */
 function escapeHtml(text) {
@@ -19,32 +20,6 @@ function escapeHtml(text) {
 /** @param {string} id */
 function escapeId(id) {
   return id.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-}
-
-/** @param {string} text */
-function sanitize(text) {
-  return text.replace(/[^A-Za-z0-9]/g, "_");
-}
-
-/**
- * @typedef {{ children: Map<string, ModuleTree>,
- *   loose: import("./filter.js").ViewNode[],
- *   groups: Map<string, import("./filter.js").ViewNode[]> }} ModuleTree
- * @returns {ModuleTree}
- */
-function emptyTree() {
-  return { children: new Map(), loose: [], groups: new Map() };
-}
-
-/** @param {ModuleTree} root @param {string} module */
-function entryFor(root, module) {
-  if (module === "") return root;
-  let current = root;
-  for (const part of module.split("::")) {
-    if (!current.children.has(part)) current.children.set(part, emptyTree());
-    current = current.children.get(part);
-  }
-  return current;
 }
 
 /** Kinds drawn as a table with a header row and one row per member. */
@@ -186,7 +161,7 @@ function renderNode(node, showMembers, look, theme, indent) {
 }
 
 /**
- * @param {ModuleTree} tree
+ * @param {import("./tree.js").ModuleTree} tree
  * @param {string[]} path
  * @param {boolean} showMembers
  * @param {import("./appearance.js").Appearance} look
@@ -277,16 +252,7 @@ function renderEdge(edge, portsDrawn, look, theme, indent) {
  */
 export function toDot(view, state, look, theme) {
   const chrome = DIAGRAM_CHROME[theme];
-  const root = emptyTree();
-  for (const node of view.nodes) {
-    const module = entryFor(root, node.module);
-    if (node.owner) {
-      if (!module.groups.has(node.owner)) module.groups.set(node.owner, []);
-      module.groups.get(node.owner).push(node);
-    } else {
-      module.loose.push(node);
-    }
-  }
+  const root = buildTree(view.nodes);
 
   // An edge may only use a port whose row is actually on the page.
   const portsDrawn = new Set();

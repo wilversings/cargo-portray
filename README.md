@@ -28,6 +28,7 @@ cargo portray serve  <crate-root> --port 7878
 cargo portray serve  <crate-root> --host 0.0.0.0    # reachable off this machine
 cargo portray emit   <crate-root> -o graph.json --pretty
 cargo portray export <crate-root> -o site
+cargo portray export <crate-root> -o portray.html   # one file, opens from disk
 cargo portray serve  <crate-root> -m parser -m codegen
 ```
 
@@ -72,9 +73,26 @@ python3 -m http.server --directory site     # not file://, browsers block the JS
 The model lands beside the page as `graph.json` and one `<meta>` tag in
 `index.html` points at it; everything else is copied byte for byte. The hosted
 viewer *is* the local one — every filter, the module tree, the colour pickers,
-the light/dark switch, the DOT/SVG/PNG buttons — because all of that always ran
-in the browser. The one thing it cannot do is notice a source file changing.
+the light/dark switch, the DOT/PlantUML/SVG/PNG buttons — because all of that
+always ran in the browser. The one thing it cannot do is notice a source file
+changing.
 About a megabyte all in, most of it Graphviz.
+
+### Or as one file
+
+Name the output like a page and the whole viewer goes into it — stylesheet,
+icon, model, Graphviz and all:
+
+```sh
+cargo portray export . -o portray.html
+```
+
+That one is openable by double-clicking, which the directory is not: a browser
+will not load an ES module or fetch a sibling file from a `file://` page, so a
+site has to be served and a page does not. Attach it to a message, commit it
+beside a design note, or read it on a machine with nothing installed. The
+directory is still what a host wants — it caches the megabyte of Graphviz
+between visits, and a page cannot.
 
 For GitHub Pages, with **Settings → Pages → Source** set to *GitHub Actions*:
 
@@ -167,8 +185,11 @@ nobody needs a package manager to run it.
 | `src/extract/visitor.rs` | the `syn::Visit` pass that produces nodes and edges |
 | `src/serve.rs` | the local server and file watcher |
 | `src/export.rs` | the static-site writer |
+| `src/inline.rs` | the same viewer folded into one file, imports resolved |
 | `ui/src/filter.js` | filter state applied to the model |
-| `ui/src/dot.js` | the surviving subgraph rendered as DOT |
+| `ui/src/tree.js` | the surviving subgraph grouped into modules and impl blocks |
+| `ui/src/dot.js` | that tree rendered as DOT |
+| `ui/src/plantuml.js` | and as a PlantUML class diagram |
 | `ui/src/render.js` | Graphviz-WASM layout and click handling |
 | `ui/src/panzoom.js` | viewBox pan and zoom, in place of a package |
 | `ui/vendor/graphviz.js` | vendored Graphviz WebAssembly build |
