@@ -1,63 +1,13 @@
 /*
- * Two palettes, one declaration apiece.
- *
- * `light-dark()` picks between them by the `color-scheme` in force, and
- * `theme.js` switches that by naming the theme on this element — so a token is
- * written once and turns over on an attribute. When nothing has been named the
- * operating system decides, which is what makes "system" the honest default:
- * the browser has already painted the page in the right light before a line
- * of the JavaScript has run, so the dark page never opens white and blinks.
- * (An embedding host naming a theme explicitly is applied even earlier, by a
- * small inline script in `index.html`, for the same reason.)
- *
- * `color-scheme` is also what dresses everything this stylesheet does not
- * paint — the scrollbars, the list a `<select>` drops, the swatch in a colour
- * input — so it is set rather than merely implied.
+ * Layout and component rules. The palette and the handful of sizes shared
+ * across the page are tokens.css, loaded before this — `--bg`, `--ink`,
+ * `--sidebar-width` and the rest are custom properties defined there and only
+ * ever read here.
  */
 :root {
-  color-scheme: light dark;
-
-  --bg: light-dark(#f4f5f7, #16191d);
-  --panel: light-dark(#ffffff, #1e2228);
-  --line: light-dark(#d6dae0, #333a43);
-  --ink: light-dark(#1f2933, #e2e6ea);
-  --muted: light-dark(#67727e, #939da8);
-  --accent: light-dark(#d1345b, #ff6b87);
-  /* Fainter than a border: a tree's guide lines are structure, not edges. */
-  --tree-line: light-dark(#dde2e8, #333a43);
-  --hover: light-dark(#f1f4f8, #262c34);
-  /* What a control is drawn on, as against the panel it stands in. */
-  --field: light-dark(#ffffff, #171a1f);
-  --field-hover: light-dark(#eef1f6, #2b323b);
-  /* Set into the page rather than laid on it: signatures, code blocks. */
-  --sunken: light-dark(#f7f8fa, #181c21);
-  --code: light-dark(#f2f4f7, #22272e);
-  --doc: light-dark(#fbfcfd, #1b1f25);
-  --mark: light-dark(#ffe9a8, #6b5510);
-  --solo: light-dark(#fff4e5, #382c17);
-  --solo-line: light-dark(#f2d5ab, #6a5227);
-  --chip: light-dark(rgb(31 41 51 / 6%), rgb(255 255 255 / 9%));
-  --shadow: light-dark(rgb(31 41 51 / 16%), rgb(0 0 0 / 50%));
-  --float: light-dark(rgb(255 255 255 / 92%), rgb(30 34 40 / 92%));
-  /* The sheet the diagram is drawn on. `dot.js` paints the same colour into
-     the graph itself, so a saved SVG carries its own background and a pan off
-     the edge of the drawing does not cross a seam. */
-  --canvas: light-dark(#ffffff, #14171b);
-  /* Dragged by the seam between the panels and the diagram, and remembered
-     there; `sidebar.js` is the only thing that writes it. */
-  --sidebar-width: 320px;
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   font-size: 13px;
   color: var(--ink);
-}
-
-/* A theme that was asked for, as against one that was inherited. */
-:root[data-theme="light"] {
-  color-scheme: light;
-}
-
-:root[data-theme="dark"] {
-  color-scheme: dark;
 }
 
 * {

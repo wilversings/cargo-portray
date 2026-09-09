@@ -10,14 +10,14 @@
 // as well, so colours picked for the light page are still there when the dark
 // one is left again.
 
-import { NODE_KINDS, RELS, VIAS } from "./model.js";
+import { NODE_KINDS, RELS, VIAS } from "../data/model.js";
 
 const STORAGE_KEY = "portray.appearance.v2";
 /** The single-theme shape this replaces; read once, as the light palette. */
 const LEGACY_KEY = "portray.appearance.v1";
 
 /**
- * @typedef {import("./theme.js").Theme} Theme
+ * @typedef {import("../widgets/theme.js").Theme} Theme
  * @typedef {{ color: string, arrowhead: string }} EdgeLook
  * @typedef {"relation"|"random"} EdgeColorMode
  * @typedef {{ nodeColors: Record<string, string>,
@@ -273,7 +273,7 @@ function hslToHex(hue, sat, light) {
  * so nothing is actually lost.
  *
  * @param {Appearance} look
- * @param {import("./filter.js").ViewEdge} edge
+ * @param {import("../data/filter.js").ViewEdge} edge
  * @param {Theme} theme
  */
 export function edgeColor(look, edge, theme) {

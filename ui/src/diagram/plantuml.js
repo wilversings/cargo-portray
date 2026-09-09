@@ -96,7 +96,7 @@ function memberName(label) {
  * prefix: a module called `class` or `note` would otherwise alias an element to
  * a PlantUML keyword.
  *
- * @param {import("./filter.js").ViewNode[]} nodes
+ * @param {import("../data/filter.js").ViewNode[]} nodes
  * @returns {Map<string, string>}
  */
 function aliases(nodes) {
@@ -115,11 +115,11 @@ function aliases(nodes) {
 }
 
 /**
- * @param {import("./filter.js").ViewNode} node
+ * @param {import("../data/filter.js").ViewNode} node
  * @param {string} alias
  * @param {boolean} showMembers
  * @param {import("./appearance.js").Appearance} look
- * @param {import("./theme.js").Theme} theme
+ * @param {import("../widgets/theme.js").Theme} theme
  * @param {string} indent
  */
 function renderNode(node, alias, showMembers, look, theme, indent) {
@@ -146,7 +146,7 @@ function renderNode(node, alias, showMembers, look, theme, indent) {
  * @param {Map<string, string>} alias
  * @param {boolean} showMembers
  * @param {import("./appearance.js").Appearance} look
- * @param {import("./theme.js").Theme} theme
+ * @param {import("../widgets/theme.js").Theme} theme
  * @param {number} depth
  */
 function renderModule(tree, path, alias, showMembers, look, theme, depth) {
@@ -192,11 +192,11 @@ function renderModule(tree, path, alias, showMembers, look, theme, depth) {
 }
 
 /**
- * @param {import("./filter.js").ViewEdge} edge
+ * @param {import("../data/filter.js").ViewEdge} edge
  * @param {Map<string, string>} alias
  * @param {Map<string, string>} fieldNames port keys to the member's name
  * @param {import("./appearance.js").Appearance} look
- * @param {import("./theme.js").Theme} theme
+ * @param {import("../widgets/theme.js").Theme} theme
  */
 function renderEdge(edge, alias, fieldNames, look, theme) {
   const color = edgeColor(look, edge, theme);
@@ -213,10 +213,10 @@ function renderEdge(edge, alias, fieldNames, look, theme) {
 }
 
 /**
- * @param {import("./filter.js").View} view
- * @param {import("./state.js").FilterState} state
+ * @param {import("../data/filter.js").View} view
+ * @param {import("../data/state.js").FilterState} state
  * @param {import("./appearance.js").Appearance} look
- * @param {import("./theme.js").Theme} theme
+ * @param {import("../widgets/theme.js").Theme} theme
  * @param {string} crate
  */
 export function toPlantUml(view, state, look, theme, crate) {

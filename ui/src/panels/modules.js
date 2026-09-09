@@ -9,8 +9,8 @@
 // so they live in state the caller owns rather than in filter state: nothing
 // about which rows are listed belongs in a shared link.
 
-import { button, h, section } from "../dom.js";
-import { isUnder, moduleTree } from "../model.js";
+import { button, h, section } from "../widgets/dom.js";
+import { isUnder, moduleTree } from "../data/model.js";
 import {
   hideModule,
   isHidden,
@@ -18,10 +18,10 @@ import {
   searchModules,
   showModule,
   showSubtree,
-} from "../modules.js";
+} from "../data/modules.js";
 
 /**
- * @param {import("../model.js").Graph} graph
+ * @param {import("../data/model.js").Graph} graph
  * @param {string} module
  */
 function nodeCount(graph, module) {
@@ -98,8 +98,8 @@ function markMatch(name, query) {
 }
 
 /**
- * @param {import("../state.js").Store} store
- * @param {import("../model.js").Graph} graph
+ * @param {import("../data/state.js").Store} store
+ * @param {import("../data/model.js").Graph} graph
  * @param {{ folded: Set<string>, search: string,
  *   onToggleFold: (module: string) => void,
  *   onSearch: (query: string) => void }} tree the display-only state of this

@@ -1,7 +1,7 @@
 // Laying the DOT out with Graphviz compiled to WebAssembly, and making the
 // resulting SVG clickable.
 
-import { Graphviz } from "../vendor/graphviz.js";
+import { Graphviz } from "../../vendor/graphviz.js";
 import { attachPanZoom } from "./panzoom.js";
 
 /** @type {Promise<any>|null} */

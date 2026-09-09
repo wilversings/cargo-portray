@@ -1,11 +1,11 @@
 // Artifacts the user took out of the picture by hand, and the pattern that
 // takes out a whole family of them at once.
 
-import { button, h, section } from "../dom.js";
+import { button, h, section } from "../widgets/dom.js";
 
 /**
- * @param {import("../state.js").Store} store
- * @param {import("../model.js").Graph} graph
+ * @param {import("../data/state.js").Store} store
+ * @param {import("../data/model.js").Graph} graph
  */
 export function hiddenPanel(store, graph) {
   const state = store.get();

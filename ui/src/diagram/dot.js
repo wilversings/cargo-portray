@@ -67,16 +67,16 @@ function cellWidth(text, bold) {
   return Math.ceil(textWidth(text, bold) + CELL_PADDING * 2 + 2);
 }
 
-/** @param {import("./filter.js").ViewNode} node */
+/** @param {import("../data/filter.js").ViewNode} node */
 function keywordFor(node) {
   return node.kind === "type_alias" ? "type" : node.kind;
 }
 
 /**
- * @param {import("./filter.js").ViewNode} node
+ * @param {import("../data/filter.js").ViewNode} node
  * @param {boolean} showMembers
  * @param {import("./appearance.js").Appearance} look
- * @param {import("./theme.js").Theme} theme
+ * @param {import("../widgets/theme.js").Theme} theme
  * @param {string} indent
  */
 function renderTableNode(node, showMembers, look, theme, indent) {
@@ -119,9 +119,9 @@ function renderTableNode(node, showMembers, look, theme, indent) {
 }
 
 /**
- * @param {import("./filter.js").ViewNode} node
+ * @param {import("../data/filter.js").ViewNode} node
  * @param {import("./appearance.js").Appearance} look
- * @param {import("./theme.js").Theme} theme
+ * @param {import("../widgets/theme.js").Theme} theme
  * @param {string} indent
  */
 function renderPlainNode(node, look, theme, indent) {
@@ -148,10 +148,10 @@ function renderPlainNode(node, look, theme, indent) {
 }
 
 /**
- * @param {import("./filter.js").ViewNode} node
+ * @param {import("../data/filter.js").ViewNode} node
  * @param {boolean} showMembers
  * @param {import("./appearance.js").Appearance} look
- * @param {import("./theme.js").Theme} theme
+ * @param {import("../widgets/theme.js").Theme} theme
  * @param {string} indent
  */
 function renderNode(node, showMembers, look, theme, indent) {
@@ -165,7 +165,7 @@ function renderNode(node, showMembers, look, theme, indent) {
  * @param {string[]} path
  * @param {boolean} showMembers
  * @param {import("./appearance.js").Appearance} look
- * @param {import("./theme.js").Theme} theme
+ * @param {import("../widgets/theme.js").Theme} theme
  * @param {number} depth
  * @param {{ value: number }} counter
  */
@@ -212,10 +212,10 @@ function renderModule(tree, path, showMembers, look, theme, depth, counter) {
 }
 
 /**
- * @param {import("./filter.js").ViewEdge} edge
+ * @param {import("../data/filter.js").ViewEdge} edge
  * @param {Set<string>} portsDrawn
  * @param {import("./appearance.js").Appearance} look
- * @param {import("./theme.js").Theme} theme
+ * @param {import("../widgets/theme.js").Theme} theme
  * @param {string} indent
  */
 function renderEdge(edge, portsDrawn, look, theme, indent) {
@@ -245,10 +245,10 @@ function renderEdge(edge, portsDrawn, look, theme, indent) {
 }
 
 /**
- * @param {import("./filter.js").View} view
- * @param {import("./state.js").FilterState} state
+ * @param {import("../data/filter.js").View} view
+ * @param {import("../data/state.js").FilterState} state
  * @param {import("./appearance.js").Appearance} look
- * @param {import("./theme.js").Theme} theme
+ * @param {import("../widgets/theme.js").Theme} theme
  */
 export function toDot(view, state, look, theme) {
   const chrome = DIAGRAM_CHROME[theme];

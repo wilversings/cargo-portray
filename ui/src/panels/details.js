@@ -1,12 +1,12 @@
 // What the selected artifact is, and what you can do to it.
 
-import { button, h, section } from "../dom.js";
-import { renderMarkdown } from "../markdown.js";
-import { KIND_LABELS, REL_LABELS } from "../model.js";
+import { button, h, section } from "../widgets/dom.js";
+import { renderMarkdown } from "../widgets/markdown.js";
+import { KIND_LABELS, REL_LABELS } from "../data/model.js";
 
 /**
- * @param {import("../model.js").Graph} graph
- * @param {import("../model.js").GraphNode} node
+ * @param {import("../data/model.js").Graph} graph
+ * @param {import("../data/model.js").GraphNode} node
  */
 function neighbourLines(graph, node) {
   const outgoing = graph.edges.filter((edge) => edge.from === node.id);
@@ -35,7 +35,7 @@ function neighbourLines(graph, node) {
  * once, because the two questions are different — "what is this one thing"
  * while reading the picture, and "what does this artifact say" once you have
  * picked it.
- * @param {import("../model.js").GraphNode} node
+ * @param {import("../data/model.js").GraphNode} node
  */
 function docLines(node) {
   const documented = node.members.filter((member) => member.docs);
@@ -54,8 +54,8 @@ function docLines(node) {
 }
 
 /**
- * @param {import("../state.js").Store} store
- * @param {import("../model.js").Graph} graph
+ * @param {import("../data/state.js").Store} store
+ * @param {import("../data/model.js").Graph} graph
  * @param {string|null} selected
  */
 export function detailsPanel(store, graph, selected) {

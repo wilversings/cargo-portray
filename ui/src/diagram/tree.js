@@ -7,8 +7,8 @@
 
 /**
  * @typedef {{ children: Map<string, ModuleTree>,
- *   loose: import("./filter.js").ViewNode[],
- *   groups: Map<string, import("./filter.js").ViewNode[]> }} ModuleTree
+ *   loose: import("../data/filter.js").ViewNode[],
+ *   groups: Map<string, import("../data/filter.js").ViewNode[]> }} ModuleTree
  * @returns {ModuleTree}
  */
 function emptyTree() {
@@ -30,7 +30,7 @@ function entryFor(root, module) {
  * The view as a tree of modules, each holding the artifacts that sit loose in
  * it and the ones grouped under an `impl` block or a trait.
  *
- * @param {import("./filter.js").ViewNode[]} nodes
+ * @param {import("../data/filter.js").ViewNode[]} nodes
  * @returns {ModuleTree}
  */
 export function buildTree(nodes) {

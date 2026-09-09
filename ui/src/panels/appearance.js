@@ -11,13 +11,13 @@
 // edges run down the same channel and the only question is which line is
 // which.
 
-import { button, colorInput, h, section, select } from "../dom.js";
-import { ARROWHEADS, COLOURABLE_KINDS, LINE_STYLES } from "../appearance.js";
-import { KIND_LABELS, REL_LABELS, RELS, VIA_LABELS, VIAS } from "../model.js";
+import { button, colorInput, h, section, select } from "../widgets/dom.js";
+import { ARROWHEADS, COLOURABLE_KINDS, LINE_STYLES } from "../diagram/appearance.js";
+import { KIND_LABELS, REL_LABELS, RELS, VIA_LABELS, VIAS } from "../data/model.js";
 
 /**
- * @param {import("../appearance.js").Appearance} look
- * @param {(change: Partial<import("../appearance.js").Appearance>) => void} onChange
+ * @param {import("../diagram/appearance.js").Appearance} look
+ * @param {(change: Partial<import("../diagram/appearance.js").Appearance>) => void} onChange
  * @param {() => void} onReset
  */
 export function appearancePanel(look, onChange, onReset) {

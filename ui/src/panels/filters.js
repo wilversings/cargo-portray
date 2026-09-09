@@ -1,7 +1,7 @@
 // Edge-type and artifact-type filters, plus the handful of drawing options
 // that change what a diagram means rather than how it looks.
 
-import { button, checkbox, h, section } from "../dom.js";
+import { button, checkbox, h, section } from "../widgets/dom.js";
 import {
   CALL_KINDS,
   KIND_LABELS,
@@ -10,8 +10,8 @@ import {
   RELS,
   VIA_LABELS,
   VIAS,
-} from "../model.js";
-import { defaultState } from "../state.js";
+} from "../data/model.js";
+import { defaultState } from "../data/state.js";
 
 /**
  * @param {string[]} values
@@ -26,7 +26,7 @@ function counts(values, keys) {
 }
 
 /**
- * @param {import("../state.js").Store} store
+ * @param {import("../data/state.js").Store} store
  * @param {"kinds"|"rels"|"vias"} key
  * @param {string[]} all
  */
@@ -52,7 +52,7 @@ function selectAll(store, key, all) {
  * crate; a first look at what calls what should show what is certain, with
  * the guesses one checkbox away.
  *
- * @param {import("../state.js").Store} store
+ * @param {import("../data/state.js").Store} store
  */
 export function presetPanel(store) {
   const base = defaultState();
@@ -77,9 +77,9 @@ export function presetPanel(store) {
 }
 
 /**
- * @param {import("../state.js").Store} store
- * @param {import("../model.js").Graph} graph
- * @param {import("../appearance.js").Appearance} look
+ * @param {import("../data/state.js").Store} store
+ * @param {import("../data/model.js").Graph} graph
+ * @param {import("../diagram/appearance.js").Appearance} look
  */
 export function relationPanel(store, graph, look) {
   const state = store.get();
@@ -123,9 +123,9 @@ export function relationPanel(store, graph, look) {
 }
 
 /**
- * @param {import("../state.js").Store} store
- * @param {import("../model.js").Graph} graph
- * @param {import("../appearance.js").Appearance} look
+ * @param {import("../data/state.js").Store} store
+ * @param {import("../data/model.js").Graph} graph
+ * @param {import("../diagram/appearance.js").Appearance} look
  */
 export function artifactPanel(store, graph, look) {
   const state = store.get();
@@ -153,7 +153,7 @@ const DIRECTIONS = [
   { value: "both", label: "both" },
 ];
 
-/** @param {import("../state.js").Store} store */
+/** @param {import("../data/state.js").Store} store */
 export function optionsPanel(store) {
   const state = store.get();
   return section(

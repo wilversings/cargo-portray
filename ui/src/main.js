@@ -1,18 +1,18 @@
 // Wiring: fetch the model, keep the filter state, redraw when either moves.
 
-import { button, closeMenus, h, icon, menu, toggle } from "./dom.js";
-import { buildView } from "./filter.js";
-import { toDot } from "./dot.js";
-import { toPlantUml } from "./plantuml.js";
+import { button, closeMenus, h, icon, menu, toggle } from "./widgets/dom.js";
+import { buildView } from "./data/filter.js";
+import { toDot } from "./diagram/dot.js";
+import { toPlantUml } from "./diagram/plantuml.js";
 import { appearancePanel } from "./panels/appearance.js";
 import { detailsPanel } from "./panels/details.js";
 import { artifactPanel, optionsPanel, presetPanel, relationPanel } from "./panels/filters.js";
 import { hiddenPanel } from "./panels/hidden.js";
 import { modulePanel } from "./panels/modules.js";
-import { clearAppearance, defaultAppearance, loadAppearance, saveAppearance } from "./appearance.js";
-import { markSelected, renderInto, resetView, setDiagramLocked, setSelectStroke } from "./render.js";
-import { attachSidebarResize } from "./sidebar.js";
-import { defaultState, onHashNavigation, readHash, reconcile, Store } from "./state.js";
+import { clearAppearance, defaultAppearance, loadAppearance, saveAppearance } from "./diagram/appearance.js";
+import { markSelected, renderInto, resetView, setDiagramLocked, setSelectStroke } from "./diagram/render.js";
+import { attachSidebarResize } from "./widgets/sidebar.js";
+import { defaultState, onHashNavigation, readHash, reconcile, Store } from "./data/state.js";
 import {
   applyTheme,
   cssColor,
@@ -22,7 +22,7 @@ import {
   saveTheme,
   themeFromHost,
   THEME_CHOICES,
-} from "./theme.js";
+} from "./widgets/theme.js";
 
 const sidebar = document.getElementById("panels");
 const crateName = document.getElementById("crate-name");
@@ -66,7 +66,7 @@ const store = new Store(readHash());
 let themeChoice = themeFromHost() ?? loadTheme();
 let theme = resolveTheme(themeChoice);
 let appearance = loadAppearance(theme);
-/** @type {import("./model.js").Graph} */
+/** @type {import("./data/model.js").Graph} */
 let graph = { crate: "", root: "", scope: [], nodes: [], edges: [] };
 /** @type {string|null} */
 let selected = null;
@@ -96,10 +96,10 @@ let lastDot = "";
  * view rather than out of the DOT: what leaves the page has to be the diagram
  * on it, not whatever the filters have been moved to since.
  *
- * @type {import("./filter.js").View|null}
+ * @type {import("./data/filter.js").View|null}
  */
 let lastView = null;
-/** @type {import("./state.js").FilterState|null} */
+/** @type {import("./data/state.js").FilterState|null} */
 let lastState = null;
 let pending = false;
 /** Set when the loaded view mentioned things this crate does not have. */
@@ -289,7 +289,7 @@ function themeControl() {
 }
 
 /**
- * @param {import("./theme.js").ThemeChoice} choice
+ * @param {import("./widgets/theme.js").ThemeChoice} choice
  */
 function setTheme(choice) {
   themeChoice = choice;
